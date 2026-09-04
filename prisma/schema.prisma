@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  FINANCE_OWNER
+  RECEPTIONIST
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum LockerStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  AUTO_EXPIRED
+  FORCE_CLOSED
+}
+
+enum PaymentMethod {
+  CASH
+  TELEBIRR
+  CBE_TRANSFER
+  OTHER
+}
+
+enum StockMovementType {
+  RESTOCK
+  SALE
+  DAMAGE_WRITEOFF
+  AUDIT_CORRECTION
+}
+
+enum OrderStatus {
+  COMPLETED
+  OPEN_TAB
+  VOIDED
+  REFUNDED
+}
+
+// Staff / Users
+model User {
+  id             String          @id @default(uuid())
+  fullName       String
+  username       String          @unique
+  passwordHash   String
+  role           Role            @default(RECEPTIONIST)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  checkinSessions CheckinSession[]
+  salesOrders     SalesOrder[]
+  stockMovements  StockMovement[]
+  auditLogs       AuditLog[]
+  subscriptions   Subscription[]
+}
+
+// Members
+model Member {
+  id             String          @id @default(uuid())
+  memberCode     String          @unique // e.g. "BF-1001"
+  cardVersion    Int             @default(1) // Increments on reissue
+  fullName       String
+  phone          String          @unique
+  email          String?
+  gender         Gender
+  photoUrl       String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  dateOfBirth           String?
+  address               String?
+  idNumber              String? // National / Kebele ID
+  fitnessGoal           String? // Weight loss, Muscle gain, etc.
+  medicalHistory        String? // Medical considerations
+  bloodGroup            String? // A+, B+, O+, etc.
+  notes                 String?
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  subscriptions   Subscription[]
+  checkinSessions CheckinSession[]
+  lockerRentals   LockerRental[]
+  salesOrders     SalesOrder[]
+
+  @@index([memberCode])
+  @@index([phone])
+}
+
+// Subscriptions & Plans
+model SubscriptionPlan {
+  id             String          @id @default(uuid())
+  name           String          // e.g. "Monthly Standard", "Quarterly", "Annual"
+  durationDays   Int
+  priceETB       Decimal         @db.Decimal(10, 2)
+  description    String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id             String             @id @default(uuid())
+  memberId       String
+  member         Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  planId         String
+  plan           SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  
+  startDate      DateTime
+  endDate        DateTime
+  status         SubscriptionStatus @default(ACTIVE)
+  
+  amountPaidETB  Decimal            @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod
+  paymentRef     String?            // Telebirr ref or CBE slip #
+  
+  processedById  String
+  processedBy    User               @relation(fields: [processedById], references: [id])
+  
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([memberId, status])
+  @@index([endDate])
+}
+
+// Lockers
+model Locker {
+  id             String          @id @default(uuid())
+  lockerNumber   String          @unique // e.g. "L-01"
+  section        String          // "MALE", "FEMALE"
+  status         LockerStatus    @default(AVAILABLE)
+  notes          String?
+
+  checkinSessions CheckinSession[]
+  lockerRentals   LockerRental[]
+
+  @@index([section, status])
+}
+
+model LockerRental {
+  id             String          @id @default(uuid())
+  lockerId       String
+  locker         Locker          @relation(fields: [lockerId], references: [id])
+  memberId       String
+  member         Member          @relation(fields: [memberId], references: [id])
+  
+  startDate      DateTime
+  endDate        DateTime
+  priceETB       Decimal         @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod
+  paymentRef     String?
+  isActive       Boolean         @default(true)
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([lockerId, isActive])
+  @@index([memberId])
+}
+
+model CheckinSession {
+  id             String          @id @default(uuid())
+  memberId       String
+  member         Member          @relation(fields: [memberId], references: [id])
+  lockerId       String?
+  locker         Locker?         @relation(fields: [lockerId], references: [id])
+  
+  checkinTime    DateTime        @default(now())
+  checkoutTime   DateTime?
+  sessionStatus  SessionStatus   @default(ACTIVE)
+  
+  receptionistId String
+  receptionist   User            @relation(fields: [receptionistId], references: [id])
+
+  @@index([sessionStatus, checkinTime])
+  @@index([memberId, sessionStatus])
+  @@index([lockerId, sessionStatus])
+}
+
+// POS & Inventory
+model ProductCategory {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  products       Product[]
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  categoryId     String
+  category       ProductCategory @relation(fields: [categoryId], references: [id])
+  barcode        String?         @unique
+  name           String
+  costPriceETB   Decimal         @db.Decimal(10, 2)
+  sellingPriceETB Decimal        @db.Decimal(10, 2)
+  currentStock   Int             @default(0)
+  reorderLevel   Int             @default(5)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  orderItems     SalesOrderItem[]
+  stockMovements StockMovement[]
+
+  @@index([barcode])
+  @@index([categoryId])
+}
+
+model StockMovement {
+  id             String            @id @default(uuid())
+  productId      String
+  product        Product           @relation(fields: [productId], references: [id])
+  type           StockMovementType
+  quantity       Int
+  unitCostETB    Decimal?          @db.Decimal(10, 2)
+  reason         String?
+  referenceId    String?
+  createdById    String
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model SalesOrder {
+  id             String          @id @default(uuid())
+  orderNumber    String          @unique
+  memberId       String?
+  member         Member?         @relation(fields: [memberId], references: [id])
+  
+  totalAmountETB Decimal         @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod
+  paymentRef     String?
+  status         OrderStatus     @default(COMPLETED)
+  
+  cashierId      String
+  cashier        User            @relation(fields: [cashierId], references: [id])
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  items          SalesOrderItem[]
+
+  @@index([createdAt, status])
+  @@index([cashierId])
+}
+
+model SalesOrderItem {
+  id             String          @id @default(uuid())
+  orderId        String
+  order          SalesOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  
+  quantity       Int
+  unitPriceETB   Decimal         @db.Decimal(10, 2)
+  costPriceETB   Decimal         @db.Decimal(10, 2)
+  subtotalETB    Decimal         @db.Decimal(10, 2)
+}
+
+// Audit Logs
+model AuditLog {
+  id             String          @id @default(uuid())
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id])
+  action         String
+  entityType     String
+  entityId       String
+  detailsJson    String?
+  ipAddress      String?
+  createdAt      DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+// System Configurations
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  category    String   @default("GENERAL") // GENERAL, FINANCIAL, PAYMENT, HARDWARE
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+// Payment Accounts & Methods Master Data
+model PaymentAccount {
+  id            String   @id @default(uuid())
+  code          String   @unique // e.g. "TELEBIRR", "CBE_TRANSFER", "AWASH_BIRR", "CASH"
+  name          String   // e.g. "Telebirr Official", "Commercial Bank of Ethiopia (CBE)"
+  accountNumber String?  // e.g. "TB-894721" or "1000-4829-1029-4"
+  accountHolder String?  // e.g. "Blow Fitness PLC"
+  instructions  String?  // e.g. "Show SMS or bank transaction receipt"
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
