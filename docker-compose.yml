@@ -1,0 +1,92 @@
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL 16 Database
+  # ----------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: blow_fitness_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blow_fitness}
+      POSTGRES_USER: ${POSTGRES_USER:-blow_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/backups:/backups
+    ports:
+      - "127.0.0.1:5432:5432" # Bind only to localhost for security
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blow_admin} -d ${POSTGRES_DB:-blow_fitness}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - blow_network
+
+  # ----------------------------------------------------------------------------
+  # Next.js Application Server
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blow_fitness_app
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blow_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@db:5432/${POSTGRES_DB:-blow_fitness}?schema=public
+      SESSION_SECRET: ${SESSION_SECRET}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://gym.example.com}
+    volumes:
+      - app_uploads:/app/public/uploads
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:3000:3000" # Proxy via Caddy / Nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - blow_network
+
+  # ----------------------------------------------------------------------------
+  # Reverse Proxy (Automatic Let's Encrypt SSL with Caddy)
+  # Optional: Disable if using an external Nginx / Cloudflare tunnel
+  # ----------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: blow_fitness_proxy
+    restart: always
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - blow_network
+
+volumes:
+  postgres_data:
+    name: blow_postgres_data
+  app_uploads:
+    name: blow_app_uploads
+  caddy_data:
+    name: blow_caddy_data
+  caddy_config:
+    name: blow_caddy_config
+
+networks:
+  blow_network:
+    name: blow_fitness_network
+    driver: bridge

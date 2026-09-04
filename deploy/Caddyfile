@@ -1,0 +1,28 @@
+# Caddyfile for BLOW Fitness Production Deployment
+# Replaces complex Certbot/Nginx config with automatic SSL issuance and renewal.
+
+{$DOMAIN_NAME:gym.blowfitness.et} {
+    encode gzip zstd
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
+    # Uploads max file limit (10MB)
+    request_body {
+        max_size 10MB
+    }
+
+    # Reverse proxy to Next.js container
+    reverse_proxy app:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
