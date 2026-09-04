@@ -49,6 +49,7 @@ interface MemberLookupResult {
   fullName: string;
   phone: string;
   gender: string;
+  photoUrl?: string | null;
   isExpired: boolean;
   latestSub?: {
     planName: string;
@@ -68,6 +69,7 @@ interface BoardMemberItem {
   fullName: string;
   phone: string;
   gender: "MALE" | "FEMALE";
+  photoUrl?: string | null;
   subscriptions: Array<{
     status: string;
     endDate: string;
@@ -717,7 +719,7 @@ export default function CheckinPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center space-x-2.5 min-w-0">
                             <div
-                              className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                              className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-slate-200/80 shadow-2xs ${
                                 activeSession
                                   ? "bg-blue-900 text-white"
                                   : isExpired
@@ -725,7 +727,15 @@ export default function CheckinPage() {
                                   : "bg-emerald-100 text-emerald-800"
                               }`}
                             >
-                              {initials}
+                              {m.photoUrl ? (
+                                <img
+                                  src={m.photoUrl}
+                                  alt={m.fullName}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                initials
+                              )}
                             </div>
                             <div className="min-w-0">
                               <div className="font-bold text-slate-900 text-xs truncate leading-tight group-hover:text-[#1e3a8a]">
@@ -880,20 +890,41 @@ export default function CheckinPage() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {/* Name & Code */}
-                      <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
-                        <div className="font-bold text-base text-slate-900">{member.fullName}</div>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <span className="font-mono text-xs font-bold text-[#1e3a8a]">
-                            {member.memberCode}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            (Card v{member.cardVersion})
-                          </span>
-                          <span className="text-[10px] text-slate-400">•</span>
-                          <span className="text-xs text-slate-600 capitalize">
-                            {member.gender.toLowerCase()}
-                          </span>
+                      {/* Name & Code with photo */}
+                      <div className="rounded-lg bg-slate-50 p-3 border border-slate-200 flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-full overflow-hidden border border-slate-300 bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                          {member.photoUrl ? (
+                            <img
+                              src={member.photoUrl}
+                              alt={member.fullName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="font-bold text-sm text-slate-700">
+                              {member.fullName
+                                .split(" ")
+                                .map((n) => n[0])
+                                .slice(0, 2)
+                                .join("")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-base text-slate-900 truncate">
+                            {member.fullName}
+                          </div>
+                          <div className="flex items-center space-x-2 mt-0.5">
+                            <span className="font-mono text-xs font-bold text-[#1e3a8a]">
+                              {member.memberCode}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              (Card v{member.cardVersion})
+                            </span>
+                            <span className="text-[10px] text-slate-400">•</span>
+                            <span className="text-xs text-slate-600 capitalize">
+                              {member.gender.toLowerCase()}
+                            </span>
+                          </div>
                         </div>
                       </div>
 

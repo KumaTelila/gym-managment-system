@@ -46,6 +46,9 @@ import {
   Unlock,
   ShieldCheck,
   Lock,
+  Camera,
+  Upload,
+  User,
 } from "lucide-react";
 import { formatDualDate, toEthiopianDate } from "@/lib/ethiopian-calendar";
 import { toast } from "@/components/ui/toaster";
@@ -59,6 +62,7 @@ export interface Member {
   phone: string;
   email: string | null;
   gender: "MALE" | "FEMALE";
+  photoUrl?: string | null;
   dateOfBirth?: string | null;
   address?: string | null;
   idNumber?: string | null;
@@ -198,7 +202,42 @@ export default function MembersPage() {
   const [newEmergencyName, setNewEmergencyName] = useState("");
   const [newEmergencyPhone, setNewEmergencyPhone] = useState("");
   const [newNotes, setNewNotes] = useState("");
+  const [newPhotoUrl, setNewPhotoUrl] = useState("");
+  const [uploadingMemberPhoto, setUploadingMemberPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const handleUploadPhoto = async (file: File, forEdit = false) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Invalid File", "Please select an image file (PNG, JPG, WEBP).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File Too Large", "Maximum image size is 5MB.");
+      return;
+    }
+
+    setUploadingMemberPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Failed to upload image");
+      const data = await res.json();
+      if (forEdit) {
+        setEditingMember((prev) => (prev ? { ...prev, photoUrl: data.url } : null));
+      } else {
+        setNewPhotoUrl(data.url);
+      }
+      toast.success("Photo Attached", "Profile image successfully uploaded.");
+    } catch (err) {
+      toast.error("Upload Error", err instanceof Error ? err.message : "Error uploading photo");
+    } finally {
+      setUploadingMemberPhoto(false);
+    }
+  };
 
   // Fetch session, plans, and available lockers
   useEffect(() => {
@@ -610,6 +649,7 @@ export default function MembersPage() {
   // --- CARD PREVIEW & PRINT ---
   const handleOpenCard = async (member: Member) => {
     setSelectedMember(member);
+    setShowQrOnCard(!member.photoUrl);
     setIsCardOpen(true);
 
     const payload = `${member.memberCode}:${member.cardVersion}`;
@@ -736,6 +776,7 @@ export default function MembersPage() {
           phone: newPhone,
           email: newEmail,
           gender: newGender,
+          photoUrl: newPhotoUrl || null,
           dateOfBirth: newDateOfBirth,
           address: newAddress,
           idNumber: newIdNumber,
@@ -763,6 +804,7 @@ export default function MembersPage() {
       setNewFullName("");
       setNewPhone("");
       setNewEmail("");
+      setNewPhotoUrl("");
       setNewDateOfBirth("");
       setNewAddress("");
       setNewIdNumber("");
@@ -794,6 +836,7 @@ export default function MembersPage() {
           phone: editingMember.phone,
           email: editingMember.email,
           gender: editingMember.gender,
+          photoUrl: editingMember.photoUrl || null,
           dateOfBirth: editingMember.dateOfBirth,
           address: editingMember.address,
           idNumber: editingMember.idNumber,
@@ -1047,14 +1090,34 @@ export default function MembersPage() {
                         <button
                           type="button"
                           onClick={() => handleOpenProfile(m)}
-                          className="text-left group cursor-pointer"
+                          className="text-left group cursor-pointer flex items-center gap-2.5"
                         >
-                          <div className="font-semibold text-slate-900 group-hover:text-[#1e3a8a] transition-colors flex items-center gap-1">
-                            {m.fullName}
-                            <Eye className="h-3 w-3 text-slate-400 group-hover:text-[#1e3a8a] opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="h-8 w-8 rounded-full overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0 shadow-2xs">
+                            {m.photoUrl ? (
+                              <img
+                                src={m.photoUrl}
+                                alt={m.fullName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-600">
+                                {m.fullName
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .slice(0, 2)
+                                  .join("")}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[10px] text-slate-400 capitalize">
-                            {m.gender.toLowerCase()} {m.dateOfBirth ? `• ${m.dateOfBirth}` : ""}
+                          <div>
+                            <div className="font-semibold text-slate-900 group-hover:text-[#1e3a8a] transition-colors flex items-center gap-1">
+                              {m.fullName}
+                              <Eye className="h-3 w-3 text-slate-400 group-hover:text-[#1e3a8a] opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <div className="text-[10px] text-slate-400 capitalize">
+                              {m.gender.toLowerCase()}{" "}
+                              {m.dateOfBirth ? `• ${m.dateOfBirth}` : ""}
+                            </div>
                           </div>
                         </button>
                       </TableCell>
@@ -1729,12 +1792,22 @@ export default function MembersPage() {
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center space-x-3">
-                  <div className="h-12 w-12 rounded-full bg-[#1e3a8a] text-white flex items-center justify-center font-bold text-base shadow-sm">
-                    {profileMember.fullName
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")}
+                  <div className="h-14 w-14 rounded-full overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center font-bold text-base shadow-sm shrink-0">
+                    {profileMember.photoUrl ? (
+                      <img
+                        src={profileMember.photoUrl}
+                        alt={profileMember.fullName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-[#1e3a8a] text-white flex items-center justify-center font-bold text-base">
+                        {profileMember.fullName
+                          .split(" ")
+                          .map((n) => n[0])
+                          .slice(0, 2)
+                          .join("")}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center space-x-2">
@@ -2241,6 +2314,74 @@ export default function MembersPage() {
                 1. Basic Personal Information
               </div>
 
+              {/* Optional Profile Photo */}
+              <div className="flex items-center gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-slate-300 bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                  {newPhotoUrl ? (
+                    <img
+                      src={newPhotoUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-7 w-7 text-slate-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-800 text-xs">
+                      Member Profile Photo
+                    </span>
+                    <span className="rounded-full bg-slate-200/80 px-1.5 py-0.2 text-[10px] font-medium text-slate-600">
+                      Optional
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    Printed on PVC membership card and shown during check-in.
+                  </p>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <input
+                      type="file"
+                      id="new-member-photo-input"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadPhoto(file, false);
+                      }}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        document.getElementById("new-member-photo-input")?.click()
+                      }
+                      disabled={uploadingMemberPhoto}
+                      className="h-7 text-xs bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                    >
+                      <Camera className="h-3 w-3 mr-1 text-slate-500" />
+                      {uploadingMemberPhoto
+                        ? "Uploading..."
+                        : newPhotoUrl
+                        ? "Change Photo"
+                        : "Upload Photo"}
+                    </Button>
+                    {newPhotoUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setNewPhotoUrl("")}
+                        className="h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 px-2"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-medium text-slate-700 mb-1">Full Name *</label>
                 <Input
@@ -2443,6 +2584,76 @@ export default function MembersPage() {
 
           {editingMember && (
             <form onSubmit={handleUpdateMember} className="space-y-4 text-xs">
+              {/* Member Profile Photo */}
+              <div className="flex items-center gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-slate-300 bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                  {editingMember.photoUrl ? (
+                    <img
+                      src={editingMember.photoUrl}
+                      alt={editingMember.fullName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-7 w-7 text-slate-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-800 text-xs">
+                      Member Profile Photo
+                    </span>
+                    <span className="rounded-full bg-slate-200/80 px-1.5 py-0.2 text-[10px] font-medium text-slate-600">
+                      Optional
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    Printed on PVC membership card and shown during check-in.
+                  </p>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <input
+                      type="file"
+                      id="edit-member-photo-input"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadPhoto(file, true);
+                      }}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        document.getElementById("edit-member-photo-input")?.click()
+                      }
+                      disabled={uploadingMemberPhoto}
+                      className="h-7 text-xs bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                    >
+                      <Camera className="h-3 w-3 mr-1 text-slate-500" />
+                      {uploadingMemberPhoto
+                        ? "Uploading..."
+                        : editingMember.photoUrl
+                        ? "Change Photo"
+                        : "Upload Photo"}
+                    </Button>
+                    {editingMember.photoUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setEditingMember({ ...editingMember, photoUrl: null })
+                        }
+                        className="h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 px-2"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="sm:col-span-2">
                   <label className="block font-medium text-slate-700 mb-1">Full Name *</label>

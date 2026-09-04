@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 
 interface CartItemInput {
@@ -10,10 +10,11 @@ interface CartItemInput {
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireRole("ADMIN", "RECEPTIONIST", "FINANCE_OWNER");
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const session = auth.user;
 
     const { items, paymentMethod, paymentRef, memberId, status = "COMPLETED" } =
       await request.json();
@@ -61,11 +62,20 @@ export async function POST(request: Request) {
           subtotalETB: subtotal,
         });
 
-        // 2. Decrement stock immediately (whether paid now or placed on tab)
-        await tx.product.update({
-          where: { id: product.id },
+        // 2. Decrement stock atomically (AUD-012)
+        const updateRes = await tx.product.updateMany({
+          where: {
+            id: product.id,
+            currentStock: { gte: item.quantity },
+          },
           data: { currentStock: { decrement: item.quantity } },
         });
+
+        if (updateRes.count === 0) {
+          throw new Error(
+            `Insufficient stock for ${product.name} (another sale occurred concurrently).`
+          );
+        }
 
         // 3. Log Stock Movement audit ledger
         await tx.stockMovement.create({

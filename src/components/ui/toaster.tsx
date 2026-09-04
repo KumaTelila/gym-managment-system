@@ -132,36 +132,44 @@ export function Toaster() {
     };
   }, []);
 
+  const notificationToasts = toasts.filter((t) => t.type !== "confirm");
+  const confirmToasts = toasts.filter((t) => t.type === "confirm");
+
   return (
-    <div
-      aria-live="polite"
-      className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
-    >
-      {toasts.map((t) => (
-        <ToastCard key={t.id} item={t} onDismiss={() => toast.dismiss(t.id)} />
-      ))}
-    </div>
+    <>
+      {/* 1. NOTIFICATION TOASTS (Success, Error, Warning, Info) -> Top Right */}
+      <div
+        aria-live="polite"
+        className="fixed top-4 right-4 sm:right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
+      >
+        {notificationToasts.map((t) => (
+          <ToastCard key={t.id} item={t} onDismiss={() => toast.dismiss(t.id)} />
+        ))}
+      </div>
+
+      {/* 2. CONFIRMATION POPUPS -> CENTERED ON SCREEN WITH MODAL BACKDROP */}
+      {confirmToasts.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md animate-in zoom-in-95 duration-200">
+            {confirmToasts.map((t) => (
+              <CenteredConfirmModal key={t.id} item={t} onDismiss={() => toast.dismiss(t.id)} />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
-function ToastCard({
+// Centered confirmation popup card
+function CenteredConfirmModal({
   item,
   onDismiss,
 }: {
   item: ToastItem;
   onDismiss: () => void;
 }) {
-  const [isHovered, setIsHovered] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
-
-  useEffect(() => {
-    if (item.duration && item.duration > 0 && !isHovered) {
-      const timer = setTimeout(() => {
-        onDismiss();
-      }, item.duration);
-      return () => clearTimeout(timer);
-    }
-  }, [item.duration, isHovered, onDismiss]);
 
   const handleConfirm = async () => {
     if (item.onConfirm) {
@@ -182,7 +190,79 @@ function ToastCard({
     onDismiss();
   };
 
-  // Styling based on type
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      className="relative w-full rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4"
+    >
+      <div className="flex items-start gap-3.5">
+        <div className="shrink-0 rounded-xl bg-blue-50 border border-blue-200 p-2.5 text-[#1e3a8a]">
+          <HelpCircle className="h-6 w-6" />
+        </div>
+
+        <div className="flex-1 min-w-0 pr-2">
+          <h3 className="text-base font-bold text-slate-900 leading-snug">
+            {item.title}
+          </h3>
+          {item.description && (
+            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed break-words">
+              {item.description}
+            </p>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="text-slate-400 hover:text-slate-700 p-1 rounded-lg transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <button
+          type="button"
+          disabled={loadingAction}
+          onClick={handleCancel}
+          className="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors shadow-2xs"
+        >
+          {item.cancelText || "Cancel"}
+        </button>
+
+        <button
+          type="button"
+          disabled={loadingAction}
+          onClick={handleConfirm}
+          className="px-4 py-2 text-xs font-bold rounded-lg bg-[#1e3a8a] text-white hover:bg-[#1e40af] transition-colors shadow-xs"
+        >
+          {loadingAction ? "Processing..." : item.confirmText || "Confirm"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Notification Toast Card (Top-Right)
+function ToastCard({
+  item,
+  onDismiss,
+}: {
+  item: ToastItem;
+  onDismiss: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (item.duration && item.duration > 0 && !isHovered) {
+      const timer = setTimeout(() => {
+        onDismiss();
+      }, item.duration);
+      return () => clearTimeout(timer);
+    }
+  }, [item.duration, isHovered, onDismiss]);
+
   const config = {
     success: {
       border: "border-emerald-200 bg-white",
@@ -227,18 +307,15 @@ function ToastCard({
         boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
       }}
     >
-      {/* Accent indicator line */}
       <div className={`absolute top-0 left-0 bottom-0 w-1 ${config.accent}`} />
 
       <div className="flex items-start gap-3 pl-1.5">
-        {/* Icon */}
         <div
           className={`shrink-0 rounded-lg p-1.5 border flex items-center justify-center ${config.iconColor}`}
         >
           <Icon className="h-4 w-4" />
         </div>
 
-        {/* Content */}
         <div className="flex-1 min-w-0 pr-4">
           <div className="font-bold text-xs text-slate-900 leading-snug">
             {item.title}
@@ -248,30 +325,8 @@ function ToastCard({
               {item.description}
             </div>
           )}
-
-          {/* Action Buttons for Confirmation Toasts */}
-          {item.type === "confirm" && (
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                disabled={loadingAction}
-                onClick={handleConfirm}
-                className="px-3 py-1 bg-[#1e3a8a] text-white hover:bg-[#1e40af] text-[11px] font-semibold rounded-md shadow-2xs transition-colors"
-              >
-                {loadingAction ? "Processing..." : item.confirmText || "Confirm"}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-2.5 py-1 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-medium rounded-md transition-colors"
-              >
-                {item.cancelText || "Cancel"}
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Dismiss Button */}
         <button
           type="button"
           onClick={onDismiss}

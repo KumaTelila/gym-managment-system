@@ -16,6 +16,12 @@ export const DEFAULT_SETTINGS: SettingDefinition[] = [
     description: "Official name of the fitness center printed on receipts and cards",
   },
   {
+    key: "facility_logo_url",
+    value: "",
+    category: "GENERAL",
+    description: "Official gym brand logo (PNG, JPG, SVG or WEBP)",
+  },
+  {
     key: "facility_tagline",
     value: "Premier Athletic & Performance Center",
     category: "GENERAL",

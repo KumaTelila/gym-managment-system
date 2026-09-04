@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     if (!user || !user.isActive) {
       return NextResponse.json(
-        { error: "Invalid username or account is inactive." },
+        { error: "Invalid username or password." },
         { status: 401 }
       );
     }
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       return NextResponse.json(
-        { error: "Invalid password." },
+        { error: "Invalid username or password." },
         { status: 401 }
       );
     }
@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       httpOnly: true,
       path: "/",
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
       maxAge: 7 * 24 * 60 * 60,
     });
 

@@ -84,6 +84,7 @@ export async function PATCH(
         phone: body.phone !== undefined ? body.phone.trim() : undefined,
         email: body.email !== undefined ? body.email?.trim() || null : undefined,
         gender: body.gender !== undefined ? body.gender : undefined,
+        photoUrl: body.photoUrl !== undefined ? (body.photoUrl ? body.photoUrl.trim() : null) : undefined,
         emergencyContactName: body.emergencyContactName !== undefined ? body.emergencyContactName?.trim() || null : undefined,
         emergencyContactPhone: body.emergencyContactPhone !== undefined ? body.emergencyContactPhone?.trim() || null : undefined,
         dateOfBirth: body.dateOfBirth !== undefined ? body.dateOfBirth?.trim() || null : undefined,

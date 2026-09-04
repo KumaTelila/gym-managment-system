@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireRole("ADMIN", "RECEPTIONIST");
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const session = auth.user;
 
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -105,14 +106,18 @@ export async function POST(
         });
       }
 
-      // 3. Mark Session Completed
-      await tx.checkinSession.update({
-        where: { id },
+      // 3. Mark Session Completed atomically
+      const updateResult = await tx.checkinSession.updateMany({
+        where: { id, sessionStatus: "ACTIVE" },
         data: {
           sessionStatus: "COMPLETED",
           checkoutTime: new Date(),
         },
       });
+
+      if (updateResult.count === 0) {
+        throw new Error("Session is already completed or closed.");
+      }
 
       // 4. Audit log
       await tx.auditLog.create({

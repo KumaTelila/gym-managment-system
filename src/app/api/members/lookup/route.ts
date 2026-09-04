@@ -58,6 +58,7 @@ export async function GET(request: Request) {
         fullName: member.fullName,
         phone: member.phone,
         gender: member.gender,
+        photoUrl: member.photoUrl,
         isExpired,
         latestSub: latestSub
           ? {
