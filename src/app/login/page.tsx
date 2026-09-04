@@ -7,22 +7,26 @@ import { LoginForm } from "@/components/login-form";
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
-  await ensureDefaultSettings();
-
-  const settings = await prisma.systemSetting.findMany({
-    where: {
-      key: { in: ["facility_name", "facility_logo_url", "facility_tagline"] },
-    },
-  });
-
   const branding: Record<string, string> = {
     facility_name: "Blow Fitness",
     facility_logo_url: "",
     facility_tagline: "Premier Athletic & Performance Center",
   };
 
-  for (const s of settings) {
-    branding[s.key] = s.value;
+  try {
+    await ensureDefaultSettings();
+
+    const settings = await prisma.systemSetting.findMany({
+      where: {
+        key: { in: ["facility_name", "facility_logo_url", "facility_tagline"] },
+      },
+    });
+
+    for (const s of settings) {
+      branding[s.key] = s.value;
+    }
+  } catch (error) {
+    console.warn("Could not query facility settings from database, using defaults:", error);
   }
 
   const logoUrl = branding.facility_logo_url;
