@@ -14,8 +14,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { KeyRound, PlusCircle, CheckCircle2, Lock } from "lucide-react";
+import { KeyRound, PlusCircle, CheckCircle2, Lock, Undo2 } from "lucide-react";
 import { formatDualDate } from "@/lib/ethiopian-calendar";
+import { toast } from "@/components/ui/toaster";
+import { MemberLookupAutocomplete } from "@/components/MemberLookupAutocomplete";
+import { PaymentConfirmationDialog, PaymentConfirmationDetails } from "@/components/PaymentConfirmationDialog";
+import { RefundConfirmationDialog } from "@/components/RefundConfirmationDialog";
 
 interface LockerRental {
   id: string;
@@ -47,11 +51,12 @@ export default function LockerRentalsPage() {
   const [rentals, setRentals] = useState<LockerRental[]>([]);
   const [availableLockers, setAvailableLockers] = useState<AvailableLocker[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
 
   // New rental dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [memberCode, setMemberCode] = useState("");
-  const [resolvedMember, setResolvedMember] = useState<{ id: string; fullName: string } | null>(null);
+  const [resolvedMember, setResolvedMember] = useState<{ id: string; fullName: string; memberCode: string } | null>(null);
   const [selectedLockerId, setSelectedLockerId] = useState("");
   const [priceETB, setPriceETB] = useState(500);
   const [durationDays, setDurationDays] = useState(30);
@@ -59,6 +64,23 @@ export default function LockerRentalsPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Payment Confirmation Dialog state
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PaymentConfirmationDetails | null>(null);
+
+  // Admin Refund Dialog state
+  const [refundTarget, setRefundTarget] = useState<LockerRental | null>(null);
+  const [refundLoading, setRefundLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -81,26 +103,50 @@ export default function LockerRentalsPage() {
     loadData();
   }, []);
 
-  const handleLookupMember = async () => {
-    if (!memberCode) return;
+  const handleLookupMember = async (customCode?: string) => {
+    const codeToLookup = (customCode !== undefined ? customCode : memberCode).trim();
+    if (!codeToLookup) return;
     setLookupError(null);
     try {
-      const res = await fetch(`/api/members/lookup?code=${encodeURIComponent(memberCode)}`);
+      const res = await fetch(`/api/members/lookup?code=${encodeURIComponent(codeToLookup)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Member not found");
-      setResolvedMember({ id: data.member.id, fullName: data.member.fullName });
+      setResolvedMember({ id: data.member.id, fullName: data.member.fullName, memberCode: data.member.memberCode });
+      setMemberCode(data.member.memberCode);
     } catch (err: unknown) {
       setLookupError(err instanceof Error ? err.message : "Member not found");
       setResolvedMember(null);
     }
   };
 
-  const handleCreateRental = async (e: React.FormEvent) => {
+  const handleCreateRental = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resolvedMember || !selectedLockerId) {
-      alert("Please verify member and select a locker");
+      toast.error("Validation Error", "Please verify member and select a locker.");
       return;
     }
+
+    const locker = availableLockers.find((l) => l.id === selectedLockerId);
+
+    setPendingConfirmation({
+      title: "Confirm Monthly Locker Rental",
+      description: "Verify subscriber details, locker selection, and payment details before saving.",
+      customerName: resolvedMember.fullName,
+      customerCode: resolvedMember.memberCode,
+      itemDescription: `Dedicated Locker #${locker?.lockerNumber || selectedLockerId} (${locker?.section || ""} Room)`,
+      amountETB: priceETB,
+      paymentMethod,
+      paymentRef: paymentRef.trim() || undefined,
+      extraDetails: {
+        "Rental Duration": `${durationDays} Days`,
+        "Locker": `#${locker?.lockerNumber}`,
+      },
+    });
+    setIsConfirmOpen(true);
+  };
+
+  const handleConfirmSaveRental = async () => {
+    if (!resolvedMember || !selectedLockerId) return;
 
     setSubmitting(true);
     try {
@@ -113,22 +159,46 @@ export default function LockerRentalsPage() {
           durationDays,
           priceETB,
           paymentMethod,
-          paymentRef,
+          paymentRef: paymentRef.trim() || undefined,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create rental");
 
+      toast.success("Locker Contract Created", `Payment of ${priceETB} ETB recorded for ${resolvedMember.fullName}.`);
+      setIsConfirmOpen(false);
       setIsDialogOpen(false);
       setMemberCode("");
       setResolvedMember(null);
       setPaymentRef("");
       loadData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Error creating rental");
+      toast.error("Rental Error", err instanceof Error ? err.message : "Error creating rental");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmRefund = async (reason: string) => {
+    if (!refundTarget) return;
+    setRefundLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/${refundTarget.id}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to refund locker rental");
+
+      toast.success("Locker Rental Refunded", data.message || "Rental was refunded and cancelled.");
+      setRefundTarget(null);
+      loadData();
+    } catch (err: unknown) {
+      toast.error("Refund Error", err instanceof Error ? err.message : "Failed to refund locker rental");
+    } finally {
+      setRefundLoading(false);
     }
   };
 
@@ -245,16 +315,28 @@ export default function LockerRentalsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {r.isActive && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleTerminateRental(r.id, r.locker.lockerNumber)}
-                            className="h-7 text-xs text-red-600 hover:bg-red-50 hover:border-red-300"
-                          >
-                            Release Locker
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {currentUser?.role === "ADMIN" && r.isActive && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setRefundTarget(r)}
+                              className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:border-rose-300"
+                            >
+                              Refund / Rollback
+                            </Button>
+                          )}
+                          {r.isActive && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTerminateRental(r.id, r.locker.lockerNumber)}
+                              className="h-7 text-xs text-red-600 hover:bg-red-50 hover:border-red-300"
+                            >
+                              Release Locker
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -280,29 +362,35 @@ export default function LockerRentalsPage() {
               <label className="block font-medium text-slate-700 mb-1">
                 Member Code or Phone *
               </label>
-              <div className="flex gap-2">
-                <Input
-                  required
-                  value={memberCode}
-                  onChange={(e) => setMemberCode(e.target.value)}
-                  placeholder="e.g. BF-1003"
-                  className="h-8 text-xs bg-slate-50"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleLookupMember}
-                  className="h-8 text-xs"
-                >
-                  Verify
-                </Button>
-              </div>
-              {lookupError && <p className="mt-1 text-[11px] text-red-600">{lookupError}</p>}
-              {resolvedMember && (
-                <p className="mt-1 text-[11px] text-emerald-700 font-semibold">
-                  ✓ {resolvedMember.fullName}
-                </p>
-              )}
+              <MemberLookupAutocomplete
+                placeholder="Search member by code, phone, or name..."
+                value={memberCode}
+                onChange={(val) => {
+                  setMemberCode(val);
+                  setLookupError(null);
+                }}
+                selectedMember={resolvedMember}
+                showSelectedCard={true}
+                onClearSelected={() => {
+                  setResolvedMember(null);
+                  setMemberCode("");
+                  setLookupError(null);
+                }}
+                onSelectMember={(m) => {
+                  setResolvedMember({
+                    id: m.id,
+                    fullName: m.fullName,
+                    memberCode: m.memberCode,
+                  });
+                  setMemberCode(m.memberCode);
+                  setLookupError(null);
+                }}
+                showLookupButton={true}
+                lookupButtonLabel="Verify"
+                onManualLookup={(code) => handleLookupMember(code)}
+                errorMessage={lookupError}
+                required
+              />
             </div>
 
             <div>
@@ -391,6 +479,30 @@ export default function LockerRentalsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Confirmation Dialog */}
+      <PaymentConfirmationDialog
+        open={isConfirmOpen}
+        onOpenChange={setIsConfirmOpen}
+        details={pendingConfirmation}
+        onConfirm={handleConfirmSaveRental}
+        loading={submitting}
+      />
+
+      {/* Admin Refund Confirmation Dialog */}
+      <RefundConfirmationDialog
+        open={!!refundTarget}
+        onOpenChange={(open) => {
+          if (!open) setRefundTarget(null);
+        }}
+        title="Refund Locker Rental"
+        description="This will cancel the active rental contract, refund the payment recorded, and make the dedicated locker available again."
+        amountETB={refundTarget?.priceETB || 0}
+        customerName={refundTarget?.member?.fullName}
+        itemDescription={`Locker #${refundTarget?.locker?.lockerNumber} Dedicated Rental`}
+        onConfirm={handleConfirmRefund}
+        loading={refundLoading}
+      />
     </div>
   );
 }

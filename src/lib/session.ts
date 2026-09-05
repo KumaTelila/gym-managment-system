@@ -6,7 +6,8 @@ export interface SessionUser {
   id: string;
   username: string;
   fullName: string;
-  role: "ADMIN" | "FINANCE_OWNER" | "RECEPTIONIST";
+  role: "ADMIN" | "FINANCE_OWNER" | "RECEPTIONIST" | "MEMBER";
+  memberId?: string;
 }
 
 const SESSION_COOKIE = "blow_fitness_session";
@@ -75,7 +76,26 @@ export async function getSession(): Promise<SessionUser | null> {
       },
     });
 
-    return user as SessionUser | null;
+    if (!user) return null;
+
+    let memberId: string | undefined = undefined;
+    if (user.role === "MEMBER") {
+      const member = await prisma.member.findFirst({
+        where: {
+          OR: [{ userId: user.id }, { phone: user.username }],
+        },
+        select: { id: true },
+      });
+      memberId = member?.id;
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      memberId,
+    };
   } catch {
     return null;
   }

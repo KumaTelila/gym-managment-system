@@ -52,7 +52,7 @@ export function LoginForm({
         throw new Error(data.error || "Login failed");
       }
 
-      router.push("/dashboard");
+      router.push(data.redirectTo || "/dashboard");
       router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -142,12 +142,12 @@ export function LoginForm({
               <div className="grid gap-4">
                 <div className="grid gap-1.5 text-left">
                   <Label htmlFor="username" className="text-xs font-medium text-slate-700">
-                    Username
+                    Username or Phone Number
                   </Label>
                   <Input
                     id="username"
                     type="text"
-                    placeholder="e.g. manager"
+                    placeholder="e.g. manager or 0911..."
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -180,18 +180,21 @@ export function LoginForm({
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-[#1e3a8a] hover:bg-[#1e40af] text-white h-9 text-xs font-medium shadow-xs transition-colors"
+                  className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white h-9 text-xs font-semibold shadow-xs transition-colors"
                 >
                   {loading ? "Authenticating..." : "Sign in"}
                 </Button>
               </div>
 
-              {/* Bottom Support Link */}
-              <div className="text-center text-xs text-slate-500">
-                Staff without credentials?{" "}
-                <span className="font-medium text-[#1e3a8a] hover:underline cursor-pointer">
-                  Contact administrator
-                </span>
+              {/* Online Registration Callout for Athletes */}
+              <div className="pt-2 border-t border-slate-100 flex flex-col items-center gap-1.5 text-center text-xs">
+                <span className="text-slate-500">New athlete or renewing membership?</span>
+                <a
+                  href="/register"
+                  className="font-bold text-[#ef4444] hover:text-[#dc2626] hover:underline"
+                >
+                  Register Online & Choose Plan →
+                </a>
               </div>
             </div>
           </form>

@@ -5,10 +5,9 @@ import path from "path";
 
 export async function POST(request: Request) {
   try {
+    // Allow authenticated staff/members OR public athlete registration photos
     const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const isPublicRegistration = !session;
 
     const contentType = request.headers.get("content-type") || "";
 

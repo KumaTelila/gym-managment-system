@@ -137,10 +137,10 @@ export function Toaster() {
 
   return (
     <>
-      {/* 1. NOTIFICATION TOASTS (Success, Error, Warning, Info) -> Top Right */}
+      {/* 1. NOTIFICATION TOASTS (Success, Error, Warning, Info) -> Top Right (Always above modals and overlays) */}
       <div
         aria-live="polite"
-        className="fixed top-4 right-4 sm:right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
+        className="fixed top-4 right-4 sm:right-4 left-4 sm:left-auto z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
       >
         {notificationToasts.map((t) => (
           <ToastCard key={t.id} item={t} onDismiss={() => toast.dismiss(t.id)} />
@@ -149,7 +149,7 @@ export function Toaster() {
 
       {/* 2. CONFIRMATION POPUPS -> CENTERED ON SCREEN WITH MODAL BACKDROP */}
       {confirmToasts.length > 0 && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-md animate-in zoom-in-95 duration-200">
             {confirmToasts.map((t) => (
               <CenteredConfirmModal key={t.id} item={t} onDismiss={() => toast.dismiss(t.id)} />

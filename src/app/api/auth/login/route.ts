@@ -48,15 +48,37 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { username: cleanUsername },
     });
+
+    let memberRecord: { id: string; memberCode: string } | null = null;
+
+    if (!user) {
+      // Check if user is logging in using their registered member phone
+      const member = await prisma.member.findUnique({
+        where: { phone: username.trim() },
+        include: { user: true },
+      });
+      if (member?.user) {
+        user = member.user;
+        memberRecord = { id: member.id, memberCode: member.memberCode };
+      }
+    } else if (user.role === "MEMBER") {
+      const member = await prisma.member.findFirst({
+        where: { OR: [{ userId: user.id }, { phone: user.username }] },
+        select: { id: true, memberCode: true },
+      });
+      if (member) {
+        memberRecord = { id: member.id, memberCode: member.memberCode };
+      }
+    }
 
     if (!user || !user.isActive) {
       // Audit log failed login attempt
       await logAudit({
         userId: user?.id || null,
-        action: "STAFF_LOGIN_FAILED",
+        action: user?.role === "MEMBER" ? "MEMBER_LOGIN_FAILED" : "STAFF_LOGIN_FAILED",
         entityType: "User",
         entityId: user?.id || "unknown",
         details: {
@@ -67,7 +89,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        { error: "Invalid username or password." },
+        { error: "Invalid username, phone number, or password." },
         { status: 401 }
       );
     }
@@ -77,7 +99,7 @@ export async function POST(request: Request) {
       // Audit log failed password verification
       await logAudit({
         userId: user.id,
-        action: "STAFF_LOGIN_FAILED",
+        action: user.role === "MEMBER" ? "MEMBER_LOGIN_FAILED" : "STAFF_LOGIN_FAILED",
         entityType: "User",
         entityId: user.id,
         details: {
@@ -88,7 +110,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        { error: "Invalid username or password." },
+        { error: "Invalid username, phone number, or password." },
         { status: 401 }
       );
     }
@@ -98,26 +120,31 @@ export async function POST(request: Request) {
 
     const token = createSessionToken(user.id);
 
-    // Audit log successful staff sign-in with IP address (F-12)
+    // Audit log successful sign-in with IP address (F-12)
     await logAudit({
       userId: user.id,
-      action: "STAFF_LOGIN_SUCCESS",
+      action: user.role === "MEMBER" ? "MEMBER_LOGIN_SUCCESS" : "STAFF_LOGIN_SUCCESS",
       entityType: "User",
       entityId: user.id,
       details: {
         username: user.username,
         role: user.role,
+        memberCode: memberRecord?.memberCode,
       },
       ipAddress: clientIp,
     });
 
+    const redirectTo = user.role === "MEMBER" ? "/portal" : "/dashboard";
+
     const response = NextResponse.json({
       success: true,
+      redirectTo,
       user: {
         id: user.id,
         username: user.username,
         fullName: user.fullName,
         role: user.role,
+        memberId: memberRecord?.id,
       },
     });
 

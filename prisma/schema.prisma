@@ -11,6 +11,19 @@ enum Role {
   ADMIN
   FINANCE_OWNER
   RECEPTIONIST
+  MEMBER
+}
+
+enum RegistrationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProfileUpdateRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum Gender {
@@ -76,11 +89,17 @@ model User {
   stockMovements  StockMovement[]
   auditLogs       AuditLog[]
   subscriptions   Subscription[]
+
+  member                     Member?
+  approvedRegistrations      RegistrationRequest[]        @relation("RegistrationsApproved")
+  reviewedProfileUpdates     MemberProfileUpdateRequest[] @relation("ProfileUpdatesReviewed")
 }
 
 // Members
 model Member {
   id             String          @id @default(uuid())
+  userId         String?         @unique
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   memberCode     String          @unique // e.g. "BF-1001"
   cardVersion    Int             @default(1) // Increments on reissue
   fullName       String
@@ -101,10 +120,12 @@ model Member {
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
-  subscriptions   Subscription[]
-  checkinSessions CheckinSession[]
-  lockerRentals   LockerRental[]
-  salesOrders     SalesOrder[]
+  subscriptions         Subscription[]
+  checkinSessions       CheckinSession[]
+  lockerRentals         LockerRental[]
+  salesOrders           SalesOrder[]
+  registrationRequests  RegistrationRequest[]        @relation("RegistrationMember")
+  profileUpdateRequests MemberProfileUpdateRequest[]
 
   @@index([memberCode])
   @@index([phone])
@@ -120,7 +141,8 @@ model SubscriptionPlan {
   isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
 
-  subscriptions  Subscription[]
+  subscriptions        Subscription[]
+  registrationRequests RegistrationRequest[]
 }
 
 model Subscription {
@@ -135,6 +157,9 @@ model Subscription {
   status         SubscriptionStatus @default(ACTIVE)
   
   amountPaidETB  Decimal            @db.Decimal(10, 2)
+  registrationFeeETB Decimal        @default(0) @db.Decimal(10, 2)
+  isSponsored    Boolean            @default(false)
+  sponsorReason  String?
   paymentMethod  PaymentMethod
   paymentRef     String?            // Telebirr ref or CBE slip #
   
@@ -143,6 +168,8 @@ model Subscription {
   
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+
+  registrationRequests RegistrationRequest[] @relation("RegistrationSubscription")
 
   @@index([memberId, status])
   @@index([endDate])
@@ -321,6 +348,76 @@ model PaymentAccount {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// Online Registration Requests
+model RegistrationRequest {
+  id                    String                    @id @default(uuid())
+  requestNumber         String                    @unique // e.g. "ONL-1001"
+  fullName              String
+  phone                 String
+  passwordHash          String
+  email                 String?
+  gender                Gender
+  photoUrl              String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  dateOfBirth           String?
+  address               String?
+  idNumber              String?
+  fitnessGoal           String?
+  medicalHistory        String?
+  bloodGroup            String?
+  notes                 String?
+
+  planId                String
+  plan                  SubscriptionPlan          @relation(fields: [planId], references: [id])
+  startDate             DateTime
+  amountETB             Decimal                   @db.Decimal(10, 2)
+  registrationFeeETB    Decimal                   @default(0) @db.Decimal(10, 2)
+  paymentMethod         PaymentMethod
+  paymentRef            String?
+
+  status                RegistrationRequestStatus @default(PENDING)
+  rejectionReason       String?
+
+  approvedById          String?
+  approvedBy            User?                     @relation("RegistrationsApproved", fields: [approvedById], references: [id])
+  approvedAt            DateTime?
+
+  createdMemberId       String?
+  createdMember         Member?                   @relation("RegistrationMember", fields: [createdMemberId], references: [id])
+  createdSubscriptionId String?
+  createdSubscription   Subscription?             @relation("RegistrationSubscription", fields: [createdSubscriptionId], references: [id])
+
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@index([phone])
+  @@index([status])
+}
+
+// Member Profile Update Requests (Subject to Admin / Manager Approval)
+model MemberProfileUpdateRequest {
+  id            String                     @id @default(uuid())
+  memberId      String
+  member        Member                     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  proposedData  String                     // JSON string of proposed fields
+  currentData   String                     // JSON string of snapshot before changes
+  changeSummary String?                    // e.g. "Phone, Emergency Contact"
+
+  status        ProfileUpdateRequestStatus @default(PENDING)
+  adminReason   String?                    // Approval or rejection justification
+
+  reviewedById  String?
+  reviewedBy    User?                      @relation("ProfileUpdatesReviewed", fields: [reviewedById], references: [id])
+  reviewedAt    DateTime?
+
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  @@index([memberId, status])
 }
 
 

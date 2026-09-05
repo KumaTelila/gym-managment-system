@@ -14,6 +14,10 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  if (session.role === "MEMBER") {
+    redirect("/portal");
+  }
+
   return (
     <>
       <Toaster />

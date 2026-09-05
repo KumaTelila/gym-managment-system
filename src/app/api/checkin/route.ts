@@ -88,13 +88,22 @@ export async function POST(request: Request) {
         orderBy: { endDate: "desc" },
       });
 
-      const message = latestSub
-        ? `Membership expired on ${new Date(latestSub.endDate).toLocaleDateString()}. Please renew subscription before checking in.`
-        : "No active membership subscription found. Please register or activate a plan before checking in.";
+      let message = "No active membership subscription found. Please register or activate a plan before checking in.";
+      let isFutureStart = false;
+
+      if (latestSub) {
+        if (new Date(latestSub.startDate) > now) {
+          isFutureStart = true;
+          message = `Membership is scheduled to start on ${new Date(latestSub.startDate).toLocaleDateString()}. Access will become active on that date.`;
+        } else {
+          message = `Membership expired on ${new Date(latestSub.endDate).toLocaleDateString()}. Please renew subscription before checking in.`;
+        }
+      }
 
       return NextResponse.json({
         error: message,
-        isExpired: true,
+        isExpired: !isFutureStart,
+        isFutureStart,
         member,
       }, { status: 402 });
     }

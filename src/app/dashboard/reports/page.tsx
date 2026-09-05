@@ -41,8 +41,11 @@ import {
   Calendar,
   Layers,
   ArrowUpRight,
+  Undo2,
 } from "lucide-react";
 import { formatDualDate } from "@/lib/ethiopian-calendar";
+import { toast } from "@/components/ui/toaster";
+import { RefundConfirmationDialog } from "@/components/RefundConfirmationDialog";
 
 interface UnifiedTransaction {
   id: string;
@@ -65,6 +68,8 @@ interface SalesReportResponse {
   summary: {
     totalGrossETB: number;
     totalTransactionsCount: number;
+    totalRefundsETB?: number;
+    refundsCount?: number;
     posSalesTotalETB: number;
     posSalesCount: number;
     subscriptionsTotalETB: number;
@@ -100,6 +105,54 @@ export default function ReportsPage() {
   const [loadingShift, setLoadingShift] = useState(true);
   const [countedCash, setCountedCash] = useState("");
   const [reconciliationSaved, setReconciliationSaved] = useState(false);
+
+  // User and Admin Refund state
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+  const [refundTarget, setRefundTarget] = useState<UnifiedTransaction | null>(null);
+  const [refundLoading, setRefundLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleConfirmRefund = async (reason: string) => {
+    if (!refundTarget) return;
+    setRefundLoading(true);
+    try {
+      let endpoint = "";
+      if (refundTarget.stream === "POS") {
+        endpoint = `/api/pos/orders/${refundTarget.id}/refund`;
+      } else if (refundTarget.stream === "SUBSCRIPTION") {
+        endpoint = `/api/subscriptions/${refundTarget.id}/refund`;
+      } else if (refundTarget.stream === "RENTAL") {
+        endpoint = `/api/rentals/${refundTarget.id}/refund`;
+      }
+
+      if (!endpoint) throw new Error("Unsupported transaction stream for refund");
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to refund transaction");
+
+      toast.success("Transaction Refunded", data.message || "The transaction has been rolled back and refunded.");
+      setRefundTarget(null);
+      fetchSalesReport();
+      fetchShiftReport();
+    } catch (err: unknown) {
+      toast.error("Refund Error", err instanceof Error ? err.message : "Failed to refund transaction");
+    } finally {
+      setRefundLoading(false);
+    }
+  };
 
   // Fetch all sales report
   const fetchSalesReport = async () => {
@@ -484,21 +537,25 @@ export default function ReportsPage() {
                       <TableHead className="text-xs font-semibold">Customer / Member</TableHead>
                       <TableHead className="text-xs font-semibold">Description / Items</TableHead>
                       <TableHead className="text-xs font-semibold">Channel & Ref</TableHead>
+                      <TableHead className="text-xs font-semibold">Status</TableHead>
                       <TableHead className="text-xs font-semibold">Staff</TableHead>
                       <TableHead className="text-xs font-semibold text-right">Amount (ETB)</TableHead>
+                      {currentUser?.role === "ADMIN" && (
+                        <TableHead className="text-xs font-semibold text-right">Action</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loadingSales ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-10 text-xs text-slate-400">
+                        <TableCell colSpan={currentUser?.role === "ADMIN" ? 10 : 9} className="text-center py-10 text-xs text-slate-400">
                           <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-slate-400" />
                           Loading audited sales transactions...
                         </TableCell>
                       </TableRow>
                     ) : !salesData || salesData.transactions.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-10 text-xs text-slate-500">
+                        <TableCell colSpan={currentUser?.role === "ADMIN" ? 10 : 9} className="text-center py-10 text-xs text-slate-500">
                           No sales transactions found matching the selected timeframe and filters.
                         </TableCell>
                       </TableRow>
@@ -576,6 +633,27 @@ export default function ReportsPage() {
                             )}
                           </TableCell>
 
+                          {/* Status */}
+                          <TableCell className="text-xs">
+                            {t.status === "REFUNDED" ? (
+                              <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                                Refunded
+                              </Badge>
+                            ) : t.status === "CANCELLED" ? (
+                              <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                                Cancelled
+                              </Badge>
+                            ) : t.status === "OPEN_TAB" ? (
+                              <Badge variant="warning" className="text-[10px]">
+                                Open Tab
+                              </Badge>
+                            ) : (
+                              <Badge variant="success" className="text-[10px]">
+                                Settled
+                              </Badge>
+                            )}
+                          </TableCell>
+
                           {/* Staff */}
                           <TableCell className="text-xs text-slate-600">
                             {t.staffName}
@@ -586,6 +664,26 @@ export default function ReportsPage() {
                             {t.amountETB.toLocaleString()}{" "}
                             <span className="text-[10px] font-normal text-slate-400">ETB</span>
                           </TableCell>
+
+                          {/* Admin Action */}
+                          {currentUser?.role === "ADMIN" && (
+                            <TableCell className="text-xs text-right whitespace-nowrap">
+                              {t.status !== "REFUNDED" && t.status !== "CANCELLED" && t.status !== "VOIDED" ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setRefundTarget(t)}
+                                  className="h-6 px-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 border-rose-200 hover:border-rose-300"
+                                >
+                                  Refund
+                                </Button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono italic">
+                                  Reversed
+                                </span>
+                              )}
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))
                     )}
@@ -740,6 +838,27 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Admin Refund Confirmation Dialog */}
+      <RefundConfirmationDialog
+        open={!!refundTarget}
+        onOpenChange={(open) => {
+          if (!open) setRefundTarget(null);
+        }}
+        title={`Refund ${
+          refundTarget?.stream === "POS"
+            ? "Store / Retail Order"
+            : refundTarget?.stream === "SUBSCRIPTION"
+            ? "Membership Subscription"
+            : "Locker Rental"
+        }`}
+        description="This will cancel the transaction, record an administrative reversal in the audit log, and return any merchandise stock to inventory."
+        amountETB={refundTarget?.amountETB || 0}
+        customerName={refundTarget?.customerName}
+        itemDescription={refundTarget?.description}
+        onConfirm={handleConfirmRefund}
+        loading={refundLoading}
+      />
     </div>
   );
 }

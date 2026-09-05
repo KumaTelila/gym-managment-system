@@ -36,6 +36,8 @@ import {
 } from "lucide-react";
 import { formatDualDate } from "@/lib/ethiopian-calendar";
 import { toast } from "@/components/ui/toaster";
+import { PaymentConfirmationDialog, PaymentConfirmationDetails } from "@/components/PaymentConfirmationDialog";
+import { QuickStockAdjustDialog } from "@/components/QuickStockAdjustDialog";
 
 interface Product {
   id: string;
@@ -43,6 +45,7 @@ interface Product {
   name: string;
   sellingPriceETB: number;
   currentStock: number;
+  reorderLevel?: number;
   category: { name: string };
 }
 
@@ -141,6 +144,15 @@ export default function PosPage() {
   const [settlingTab, setSettlingTab] = useState<OpenTabOrder | null>(null);
   const [settlePaymentMethod, setSettlePaymentMethod] = useState<"CASH" | "TELEBIRR" | "CBE_TRANSFER">("CASH");
   const [settlePaymentRef, setSettlePaymentRef] = useState("");
+
+  // Payment Confirmation Dialog state
+  const [isPaymentConfirmOpen, setIsPaymentConfirmOpen] = useState(false);
+  const [pendingPaymentDetails, setPendingPaymentDetails] = useState<PaymentConfirmationDetails | null>(null);
+  const [pendingAction, setPendingAction] = useState<"SALE" | "SETTLE_TAB" | null>(null);
+
+  // Quick Stock Adjustment Dialog state
+  const [isRestockOpen, setIsRestockOpen] = useState(false);
+  const [productToRestock, setProductToRestock] = useState<Product | null>(null);
 
   // Receipt Modal
   const [completedOrder, setCompletedOrder] = useState<CompletedOrder | null>(null);
@@ -276,11 +288,39 @@ export default function PosPage() {
   const handleProcessConfirmedSale = async () => {
     if (cart.length === 0) return;
 
-    if (checkoutMode === "OPEN_TAB" && !selectedMemberId) {
-      toast.error("Member Required", "Please select an athlete to open a gym tab.");
+    if (checkoutMode === "OPEN_TAB") {
+      if (!selectedMemberId) {
+        toast.error("Member Required", "Please select an athlete to open a gym tab.");
+        return;
+      }
+      await executeSale();
       return;
     }
 
+    // If IMMEDIATE: prompt Payment Confirmation Dialog
+    const itemsSummary = cart.map((i) => `${i.quantity}x ${i.product.name}`).join(", ");
+    setPendingPaymentDetails({
+      title: "Confirm Retail / Cafe Sale",
+      description: "Verify order items and customer payment collection before recording sale.",
+      amountETB: cartTotal,
+      paymentMethod,
+      paymentRef: paymentRef.trim() || undefined,
+      itemDescription: itemsSummary,
+      extraDetails: {
+        "Total Items": `${cart.reduce((s, i) => s + i.quantity, 0)} units`,
+        ...(paymentMethod === "CASH"
+          ? {
+              "Cash Tendered": `${cashTendered || cartTotal} ETB`,
+              "Change Due": `${changeDue.toLocaleString()} ETB`,
+            }
+          : {}),
+      },
+    });
+    setPendingAction("SALE");
+    setIsPaymentConfirmOpen(true);
+  };
+
+  const executeSale = async () => {
     setSubmitting(true);
     try {
       const res = await fetch("/api/pos/checkout", {
@@ -289,7 +329,7 @@ export default function PosPage() {
         body: JSON.stringify({
           items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
           paymentMethod: checkoutMode === "IMMEDIATE" ? paymentMethod : "CASH",
-          paymentRef: checkoutMode === "IMMEDIATE" ? paymentRef : undefined,
+          paymentRef: checkoutMode === "IMMEDIATE" ? (paymentRef.trim() || undefined) : undefined,
           memberId: selectedMemberId || undefined,
           status: checkoutMode === "OPEN_TAB" ? "OPEN_TAB" : "COMPLETED",
         }),
@@ -311,6 +351,7 @@ export default function PosPage() {
         setCompletedOrder(data.order);
       }
 
+      setIsPaymentConfirmOpen(false);
       setIsConfirmModalOpen(false);
       setCart([]);
       setPaymentRef("");
@@ -325,8 +366,26 @@ export default function PosPage() {
   };
 
   // Settle an Open Tab (Pay when leaving gym)
-  const handleSettleTabSubmit = async (e: React.FormEvent) => {
+  const handleSettleTabSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!settlingTab) return;
+
+    const itemsSummary = settlingTab.items.map((i) => `${i.quantity}x ${i.product.name}`).join(", ");
+    setPendingPaymentDetails({
+      title: "Confirm Gym Tab Settlement",
+      description: `Verify payment received from ${settlingTab.member.fullName} before closing gym tab.`,
+      customerName: settlingTab.member.fullName,
+      customerCode: settlingTab.member.memberCode,
+      amountETB: Number(settlingTab.totalAmountETB),
+      paymentMethod: settlePaymentMethod,
+      paymentRef: settlePaymentRef.trim() || undefined,
+      itemDescription: itemsSummary,
+    });
+    setPendingAction("SETTLE_TAB");
+    setIsPaymentConfirmOpen(true);
+  };
+
+  const executeSettleTab = async () => {
     if (!settlingTab) return;
 
     setSubmitting(true);
@@ -336,7 +395,7 @@ export default function PosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentMethod: settlePaymentMethod,
-          paymentRef: settlePaymentRef,
+          paymentRef: settlePaymentRef.trim() || undefined,
         }),
       });
 
@@ -348,6 +407,7 @@ export default function PosPage() {
         `${Number(settlingTab.totalAmountETB).toLocaleString()} ETB payment recorded for ${settlingTab.member.fullName}.`
       );
 
+      setIsPaymentConfirmOpen(false);
       setCompletedOrder(data.order);
       setSettlingTab(null);
       setSettlePaymentRef("");
@@ -359,6 +419,14 @@ export default function PosPage() {
     }
   };
 
+  const handlePaymentConfirmationSubmit = () => {
+    if (pendingAction === "SALE") {
+      return executeSale();
+    } else if (pendingAction === "SETTLE_TAB") {
+      return executeSettleTab();
+    }
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesCat = selectedCategory === "ALL" || p.category.name === selectedCategory;
     const matchesSearch =
@@ -366,6 +434,10 @@ export default function PosPage() {
       (p.barcode && p.barcode.includes(search));
     return matchesCat && matchesSearch;
   });
+
+  const lowStockProducts = products.filter(
+    (p) => p.currentStock <= (p.reorderLevel ?? 5)
+  );
 
   const changeDue = Math.max(0, Number(cashTendered || 0) - cartTotal);
 
@@ -387,33 +459,82 @@ export default function PosPage() {
           </p>
         </div>
 
-        {/* View Mode Pills: POS vs Open Tabs */}
-        <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg shrink-0">
-          <button
+        {/* View Mode Pills & Quick Restock Button */}
+        <div className="flex items-center gap-2">
+          <Button
             type="button"
-            onClick={() => setViewMode("pos")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-              viewMode === "pos" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <ShoppingCart className="h-3.5 w-3.5 text-[#1e3a8a]" />
-            POS Terminal
-          </button>
-          <button
-            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => {
-              setViewMode("tabs");
-              loadOpenTabs();
+              setProductToRestock(lowStockProducts[0] || null);
+              setIsRestockOpen(true);
             }}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-              viewMode === "tabs" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
-            }`}
+            className="h-8 text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
           >
-            <Clock className="h-3.5 w-3.5 text-amber-600" />
-            Open Gym Tabs ({openTabs.length})
-          </button>
+            <Package className="h-3.5 w-3.5 mr-1.5 text-[#1e3a8a]" />
+            Quick Restock
+          </Button>
+
+          <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode("pos")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                viewMode === "pos" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <ShoppingCart className="h-3.5 w-3.5 text-[#1e3a8a]" />
+              POS Terminal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("tabs");
+                loadOpenTabs();
+              }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                viewMode === "tabs" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5 text-amber-600" />
+              Open Gym Tabs ({openTabs.length})
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Low Stock Warning Alert Banner */}
+      {lowStockProducts.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 bg-amber-50/90 border border-amber-300 rounded-lg text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-full bg-amber-100 border border-amber-300 text-amber-700 shrink-0">
+              <AlertCircle className="h-4 w-4" />
+            </div>
+            <div className="text-xs">
+              <span className="font-bold">Low Inventory Warning ({lowStockProducts.length} items low or out of stock):</span>{" "}
+              <span className="text-amber-800">
+                {lowStockProducts
+                  .slice(0, 4)
+                  .map((p) => `${p.name} (${p.currentStock} left)`)
+                  .join(", ")}
+                {lowStockProducts.length > 4 ? `, +${lowStockProducts.length - 4} more` : ""}
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setProductToRestock(lowStockProducts[0]);
+              setIsRestockOpen(true);
+            }}
+            className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0"
+          >
+            <Package className="h-3.5 w-3.5 mr-1" />
+            Restock Now
+          </Button>
+        </div>
+      )}
 
       {/* VIEW MODE 1: STANDARD POS CATALOG & CART */}
       {viewMode === "pos" ? (
@@ -1089,6 +1210,24 @@ export default function PosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Confirmation Safeguard Dialog */}
+      <PaymentConfirmationDialog
+        open={isPaymentConfirmOpen}
+        onOpenChange={setIsPaymentConfirmOpen}
+        details={pendingPaymentDetails}
+        onConfirm={handlePaymentConfirmationSubmit}
+        loading={submitting}
+      />
+
+      {/* Quick Stock Adjustment & Restock Dialog */}
+      <QuickStockAdjustDialog
+        open={isRestockOpen}
+        onOpenChange={setIsRestockOpen}
+        product={productToRestock}
+        productsList={products}
+        onSuccess={() => loadCatalog()}
+      />
     </div>
   );
 }

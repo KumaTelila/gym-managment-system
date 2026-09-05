@@ -92,6 +92,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN", "FINANCE_OWNER", "RECEPTIONIST"],
       },
       {
+        title: "Online Approvals",
+        url: "/dashboard/approvals",
+        icon: ShieldCheck,
+        roles: ["ADMIN", "FINANCE_OWNER", "RECEPTIONIST"],
+      },
+      {
         title: "Locker Rentals",
         url: "/dashboard/rentals",
         icon: KeyRound,
@@ -197,7 +203,7 @@ export function Sidebar({
       <div className="flex items-center gap-3 px-2 py-2 mb-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200/80 shadow-xs overflow-hidden shrink-0">
           <img
-            src={logoUrl || "/logo.png"}
+            src={logoUrl || "/blow.png"}
             alt={facilityName}
             className="h-full w-full object-contain p-0.5"
           />

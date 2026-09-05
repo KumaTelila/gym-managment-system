@@ -65,7 +65,7 @@ export function Header({ mobileMenuOpen, onToggleMobileMenu }: HeaderProps) {
         <div className="flex items-center gap-2 lg:hidden">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white border border-slate-200/80 shadow-2xs overflow-hidden shrink-0">
             <img
-              src={logoUrl || "/logo.png"}
+              src={logoUrl || "/blow.png"}
               alt={facilityName}
               className="h-full w-full object-contain p-0.5"
             />

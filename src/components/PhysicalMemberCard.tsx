@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { formatEthiopianNumericDate } from "@/lib/ethiopian-calendar";
 
 export interface PhysicalCardMember {
@@ -29,6 +29,8 @@ interface PhysicalMemberCardProps {
   qrDataUrl?: string;
   showQrInPhotoBox?: boolean;
   side?: "front" | "back" | "both";
+  logoUrl?: string;
+  facilityName?: string;
   className?: string;
 }
 
@@ -42,8 +44,37 @@ export function PhysicalMemberCard({
   qrDataUrl,
   showQrInPhotoBox = true,
   side = "both",
+  logoUrl: propLogo,
+  facilityName: propName,
   className = "",
 }: PhysicalMemberCardProps) {
+  const [fetchedLogo, setFetchedLogo] = useState<string>("");
+  const [fetchedName, setFetchedName] = useState<string>("");
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!propLogo || !propName) {
+      fetch("/api/settings/public")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!isMounted) return;
+          if (data.config?.facility_logo_url) {
+            setFetchedLogo(data.config.facility_logo_url);
+          }
+          if (data.config?.facility_name) {
+            setFetchedName(data.config.facility_name);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [propLogo, propName]);
+
+  const activeLogo = propLogo || fetchedLogo || "/blow.png";
+  const activeName = propName || fetchedName || "BLOW FITNESS";
+
   // Extract subscription details
   const subFromList = member.subscriptions && member.subscriptions[0];
   const sub = member.latestSub || subFromList;
@@ -63,7 +94,11 @@ export function PhysicalMemberCard({
 
   const endDateStr = sub?.endDate
     ? formatEthiopianNumericDate(sub.endDate)
-    : formatEthiopianNumericDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+    : (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        return formatEthiopianNumericDate(d);
+      })();
 
   return (
     <div className={`flex flex-wrap items-center justify-center gap-6 ${className}`}>
@@ -75,19 +110,29 @@ export function PhysicalMemberCard({
           style={{
             width: "350px",
             height: "220px",
+            backgroundColor: "#fed700",
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
           }}
-          className="relative rounded-xl overflow-hidden bg-[#fed700] text-slate-900 border-2 border-slate-900 shadow-md flex flex-col justify-between select-none shrink-0"
+          className="relative rounded-xl overflow-hidden bg-[#fed700] text-slate-900 border-2 border-slate-900 shadow-md flex flex-col justify-between select-none shrink-0 print:shadow-none"
         >
           {/* Main Card Content */}
           <div className="p-3.5 pb-1 flex flex-col justify-between flex-1">
             {/* Header: Logo & BLOW FITNESS banner */}
             <div className="flex items-center justify-between gap-2">
               {/* Left Logo Emblem */}
-              <div className="flex items-center justify-center shrink-0">
+              <div className="flex items-center justify-center shrink-0 h-10 w-10 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/logo.png"
-                  alt="BLOW FITNESS"
-                  className="h-9 w-9 object-contain"
+                  src={activeLogo}
+                  alt={activeName}
+                  className="h-10 max-h-10 w-10 max-w-10 object-contain drop-shadow-xs"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (target.src !== "/logo.png") {
+                      target.src = "/logo.png";
+                    }
+                  }}
                 />
               </div>
 
@@ -98,9 +143,9 @@ export function PhysicalMemberCard({
                     letterSpacing: "0.08em",
                     textShadow: "1px 1px 0 #000",
                   }}
-                  className="font-black text-lg md:text-xl text-slate-900 uppercase font-sans leading-none block"
+                  className="font-black text-lg md:text-xl text-slate-900 uppercase font-sans leading-none block truncate"
                 >
-                  BLOW FITNESS
+                  {activeName}
                 </span>
               </div>
             </div>
@@ -152,9 +197,17 @@ export function PhysicalMemberCard({
 
               {/* Right: Authentic Photo / Stamp Box */}
               <div className="shrink-0 flex flex-col items-center">
-                <div className="w-[86px] h-[98px] border-2 border-slate-900 rounded-sm bg-[#fed700] flex flex-col items-center justify-center overflow-hidden relative shadow-2xs">
+                <div
+                  style={{
+                    backgroundColor: showQrInPhotoBox && qrDataUrl ? "#ffffff" : "#fed700",
+                    WebkitPrintColorAdjust: "exact",
+                    printColorAdjust: "exact",
+                  }}
+                  className="w-[86px] h-[98px] border-2 border-slate-900 rounded-sm flex flex-col items-center justify-center overflow-hidden relative shadow-2xs print:shadow-none"
+                >
                   {showQrInPhotoBox && qrDataUrl ? (
                     <div className="flex flex-col items-center justify-center p-1 bg-white w-full h-full">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={qrDataUrl}
                         alt="QR Card Code"
@@ -165,6 +218,7 @@ export function PhysicalMemberCard({
                       </span>
                     </div>
                   ) : member.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={member.photoUrl}
                       alt={member.fullName}
@@ -195,7 +249,14 @@ export function PhysicalMemberCard({
           </div>
 
           {/* Bottom Solid Black Stripe */}
-          <div className="h-3 w-full bg-slate-950 shrink-0" />
+          <div
+            style={{
+              backgroundColor: "#020617",
+              WebkitPrintColorAdjust: "exact",
+              printColorAdjust: "exact",
+            }}
+            className="h-3 w-full bg-slate-950 shrink-0"
+          />
         </div>
       )}
 
@@ -207,21 +268,38 @@ export function PhysicalMemberCard({
           style={{
             width: "350px",
             height: "220px",
+            backgroundColor: "#e64a38",
+            WebkitPrintColorAdjust: "exact",
+            printColorAdjust: "exact",
           }}
-          className="relative rounded-xl overflow-hidden bg-[#e64a38] text-slate-950 border-2 border-slate-900 shadow-md flex flex-col justify-between select-none shrink-0"
+          className="relative rounded-xl overflow-hidden bg-[#e64a38] text-slate-950 border-2 border-slate-900 shadow-md flex flex-col justify-between select-none shrink-0 print:shadow-none"
         >
           {/* Faint Background Watermark */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-15">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.png"
-              alt="BLOW Watermark"
+              src={activeLogo}
+              alt="Gym Watermark"
               className="w-40 h-40 object-contain -rotate-12 filter grayscale contrast-200"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src !== "/logo.png") {
+                  target.src = "/logo.png";
+                }
+              }}
             />
           </div>
 
           {/* Card Inset Framed Content */}
           <div className="p-3.5 pb-1 flex flex-col justify-center flex-1 relative z-10">
-            <div className="border border-slate-900/80 rounded-md p-3 bg-red-500/10 backdrop-blur-[1px] space-y-2">
+            <div
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.15)",
+                WebkitPrintColorAdjust: "exact",
+                printColorAdjust: "exact",
+              }}
+              className="border border-slate-900/80 rounded-md p-3 bg-white/15 backdrop-blur-[1px] space-y-2"
+            >
               {/* Rule 1 */}
               <div className="text-[10px] font-bold leading-snug tracking-tight text-slate-950">
                 1. ለስፖርት ሲሰሩ በሚመጡበት ጊዜ መታወቂያውን መያዝ አይርሱ።
@@ -245,7 +323,14 @@ export function PhysicalMemberCard({
           </div>
 
           {/* Bottom Solid Black Stripe */}
-          <div className="h-3 w-full bg-slate-950 shrink-0 relative z-10" />
+          <div
+            style={{
+              backgroundColor: "#020617",
+              WebkitPrintColorAdjust: "exact",
+              printColorAdjust: "exact",
+            }}
+            className="h-3 w-full bg-slate-950 shrink-0 relative z-10"
+          />
         </div>
       )}
     </div>

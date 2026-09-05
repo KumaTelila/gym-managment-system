@@ -27,6 +27,7 @@ import {
   Edit2,
   Trash2,
 } from "lucide-react";
+import { QuickStockAdjustDialog } from "@/components/QuickStockAdjustDialog";
 
 interface Plan {
   id: string;
@@ -93,6 +94,11 @@ export default function MasterDataPage() {
   const [editingPayment, setEditingPayment] = useState<PaymentAccount | null>(null);
   const [editingLocker, setEditingLocker] = useState<Locker | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // Quick Restock Dialog state
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [productForRestock, setProductForRestock] = useState<Product | null>(null);
+  const [stockFilter, setStockFilter] = useState<"ALL" | "LOW_STOCK">("ALL");
 
   // Create Forms
   const [planName, setPlanName] = useState("");
@@ -498,13 +504,26 @@ export default function MasterDataPage() {
           )}
 
           {activeTab === "PRODUCTS" && (
-            <Button
-              onClick={() => setIsProductOpen(true)}
-              className="bg-[#1e3a8a] text-white hover:bg-[#1e40af] h-8 text-xs font-semibold"
-            >
-              <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
-              Add Catalog Product
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  setProductForRestock(null);
+                  setIsRestockModalOpen(true);
+                }}
+                variant="outline"
+                className="h-8 text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                <Package className="h-3.5 w-3.5 mr-1.5 text-[#1e3a8a]" />
+                Quick Restock
+              </Button>
+              <Button
+                onClick={() => setIsProductOpen(true)}
+                className="bg-[#1e3a8a] text-white hover:bg-[#1e40af] h-8 text-xs font-semibold"
+              >
+                <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                Add Catalog Product
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -745,10 +764,37 @@ export default function MasterDataPage() {
       {activeTab === "PRODUCTS" && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">POS Product Master Catalog</CardTitle>
-            <CardDescription className="text-xs">
-              Retail supplements, beverages, and merchandise sold at front desk. Click Edit to modify price, stock, or barcode.
-            </CardDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold">POS Product Master Catalog</CardTitle>
+                <CardDescription className="text-xs">
+                  Retail supplements, beverages, and merchandise sold at front desk. Click Quick Restock to replenish stock.
+                </CardDescription>
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setStockFilter("ALL")}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded ${
+                    stockFilter === "ALL" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  All Products ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockFilter("LOW_STOCK")}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded flex items-center gap-1 ${
+                    stockFilter === "LOW_STOCK" ? "bg-white text-amber-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <AlertTriangle className="h-3 w-3 text-amber-600" />
+                  Low / Out of Stock ({products.filter((p) => p.currentStock <= p.reorderLevel).length})
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -766,48 +812,74 @@ export default function MasterDataPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs text-slate-500">{p.barcode || "—"}</TableCell>
-                    <TableCell className="font-semibold text-slate-900">{p.name}</TableCell>
-                    <TableCell className="text-xs text-slate-600">{p.category.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-slate-600">
-                      {Number(p.costPriceETB).toLocaleString()} ETB
-                    </TableCell>
-                    <TableCell className="font-mono text-xs font-bold text-[#1e3a8a]">
-                      {Number(p.sellingPriceETB).toLocaleString()} ETB
-                    </TableCell>
-                    <TableCell className="font-mono text-xs font-bold text-slate-900">
-                      {p.currentStock} units
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-slate-500">{p.reorderLevel}</TableCell>
-                    <TableCell>
-                      <Badge variant={p.isActive ? "success" : "secondary"} className="text-[10px]">
-                        {p.isActive ? "Active" : "Archived"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingProduct(p)}
-                        className="h-7 text-xs px-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-                      >
-                        <Edit2 className="h-3 w-3 mr-1 text-slate-500" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleProduct(p.id, p.isActive)}
-                        className={`h-7 text-xs px-2 ${p.isActive ? "text-slate-600" : "text-emerald-700"}`}
-                      >
-                        <Power className="h-3 w-3 mr-1" />
-                        {p.isActive ? "Archive" : "Activate"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {products
+                  .filter((p) => (stockFilter === "LOW_STOCK" ? p.currentStock <= p.reorderLevel : true))
+                  .map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-mono text-xs text-slate-500">{p.barcode || "—"}</TableCell>
+                      <TableCell className="font-semibold text-slate-900">{p.name}</TableCell>
+                      <TableCell className="text-xs text-slate-600">{p.category.name}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-600">
+                        {Number(p.costPriceETB).toLocaleString()} ETB
+                      </TableCell>
+                      <TableCell className="font-mono text-xs font-bold text-[#1e3a8a]">
+                        {Number(p.sellingPriceETB).toLocaleString()} ETB
+                      </TableCell>
+                      <TableCell>
+                        {p.currentStock <= 0 ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Out of Stock (0)
+                          </Badge>
+                        ) : p.currentStock <= p.reorderLevel ? (
+                          <Badge variant="warning" className="text-[10px] bg-amber-100 text-amber-900 border-amber-300 font-bold">
+                            Low: {p.currentStock} units
+                          </Badge>
+                        ) : (
+                          <span className="font-mono text-xs font-bold text-slate-900">
+                            {p.currentStock} units
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500">{p.reorderLevel}</TableCell>
+                      <TableCell>
+                        <Badge variant={p.isActive ? "success" : "secondary"} className="text-[10px]">
+                          {p.isActive ? "Active" : "Archived"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right space-x-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setProductForRestock(p);
+                            setIsRestockModalOpen(true);
+                          }}
+                          className="h-7 text-xs px-2 text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                        >
+                          <PlusCircle className="h-3 w-3 mr-1 text-emerald-600" />
+                          Restock
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingProduct(p)}
+                          className="h-7 text-xs px-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          <Edit2 className="h-3 w-3 mr-1 text-slate-500" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleProduct(p.id, p.isActive)}
+                          className={`h-7 text-xs px-2 ${p.isActive ? "text-slate-600" : "text-emerald-700"}`}
+                        >
+                          <Power className="h-3 w-3 mr-1" />
+                          {p.isActive ? "Archive" : "Activate"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -1442,6 +1514,14 @@ export default function MasterDataPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <QuickStockAdjustDialog
+        open={isRestockModalOpen}
+        onOpenChange={setIsRestockModalOpen}
+        product={productForRestock}
+        productsList={products}
+        onSuccess={() => loadData()}
+      />
     </div>
   );
 }

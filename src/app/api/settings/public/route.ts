@@ -15,6 +15,7 @@ export async function GET() {
             "facility_address",
             "facility_phone",
             "facility_email",
+            "registration_fee",
           ],
         },
       },
@@ -27,6 +28,7 @@ export async function GET() {
       facility_address: "Bole Medhanialem, Camoros St, Addis Ababa, Ethiopia",
       facility_phone: "+251 91 100 2233",
       facility_email: "desk@blowfitness.et",
+      registration_fee: "100",
     };
 
     for (const s of branding) {

@@ -25,6 +25,8 @@ import {
   LogIn,
 } from "lucide-react";
 import { toast } from "@/components/ui/toaster";
+import { MemberLookupAutocomplete } from "@/components/MemberLookupAutocomplete";
+import { PaymentConfirmationDialog, PaymentConfirmationDetails } from "@/components/PaymentConfirmationDialog";
 
 interface LockerData {
   id: string;
@@ -65,6 +67,10 @@ export default function LockersPage() {
   const [rentSubmitting, setRentSubmitting] = useState(false);
   const [rentLookupError, setRentLookupError] = useState<string | null>(null);
 
+  // Payment Confirmation Dialog state
+  const [isConfirmRentOpen, setIsConfirmRentOpen] = useState(false);
+  const [pendingRentConfirmation, setPendingRentConfirmation] = useState<PaymentConfirmationDetails | null>(null);
+
   const handleOpenRentModal = (locker: LockerData) => {
     setRentLocker(locker);
     setRentResolvedMember(null);
@@ -91,12 +97,32 @@ export default function LockersPage() {
     }
   };
 
-  const handleSubmitRent = async (e: React.FormEvent) => {
+  const handleSubmitRent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!rentResolvedMember || !rentLocker) {
       toast.error("Validation Error", "Please select a member and locker.");
       return;
     }
+
+    setPendingRentConfirmation({
+      title: "Confirm Dedicated Locker Payment",
+      description: "Carefully verify member details, locker assignment, and payment details before saving.",
+      customerName: rentResolvedMember.fullName,
+      customerCode: rentResolvedMember.memberCode,
+      itemDescription: `Dedicated Locker #${rentLocker.lockerNumber} (${rentLocker.section} Room)`,
+      amountETB: rentPriceETB,
+      paymentMethod: rentPaymentMethod,
+      paymentRef: rentPaymentRef?.trim() || null,
+      extraDetails: {
+        "Rental Duration": `${rentDurationDays} Days`,
+        "Locker Section": `${rentLocker.section} Locker Room`,
+      },
+    });
+    setIsConfirmRentOpen(true);
+  };
+
+  const handleConfirmSaveRent = async () => {
+    if (!rentResolvedMember || !rentLocker) return;
 
     setRentSubmitting(true);
     try {
@@ -121,6 +147,7 @@ export default function LockersPage() {
         `Locker ${rentLocker.lockerNumber} reserved for ${rentResolvedMember.fullName} (${rentDurationDays} days).`
       );
 
+      setIsConfirmRentOpen(false);
       setIsRentModalOpen(false);
       setRentLocker(null);
       setRentResolvedMember(null);
@@ -428,59 +455,33 @@ export default function LockersPage() {
               {/* Member Lookup */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Member</label>
-                {rentResolvedMember ? (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 bg-emerald-50">
-                    <div>
-                      <div className="text-xs font-bold text-emerald-950">
-                        {rentResolvedMember.fullName}
-                      </div>
-                      <div className="text-[11px] font-mono text-emerald-700">
-                        {rentResolvedMember.memberCode}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setRentResolvedMember(null);
-                        setRentMemberCode("");
-                      }}
-                      className="h-7 text-xs text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100/50"
-                    >
-                      Change
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Member code (e.g. BF-1001), phone, or name..."
-                        value={rentMemberCode}
-                        onChange={(e) => setRentMemberCode(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleLookupRentMember(rentMemberCode);
-                          }
-                        }}
-                        className="h-9 text-xs"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handleLookupRentMember(rentMemberCode)}
-                        className="h-9 text-xs shrink-0"
-                      >
-                        <Search className="h-3.5 w-3.5 mr-1" />
-                        Lookup
-                      </Button>
-                    </div>
-                    {rentLookupError && (
-                      <p className="text-[11px] text-red-600 font-medium">{rentLookupError}</p>
-                    )}
-                  </div>
-                )}
+                <MemberLookupAutocomplete
+                  placeholder="Member code (e.g. BF-1001), phone, or name..."
+                  value={rentMemberCode}
+                  onChange={(val) => {
+                    setRentMemberCode(val);
+                    setRentLookupError(null);
+                  }}
+                  selectedMember={rentResolvedMember}
+                  showSelectedCard={true}
+                  onClearSelected={() => {
+                    setRentResolvedMember(null);
+                    setRentMemberCode("");
+                    setRentLookupError(null);
+                  }}
+                  onSelectMember={(m) => {
+                    setRentResolvedMember({
+                      id: m.id,
+                      fullName: m.fullName,
+                      memberCode: m.memberCode,
+                    });
+                    setRentLookupError(null);
+                  }}
+                  showLookupButton={true}
+                  lookupButtonLabel="Lookup"
+                  onManualLookup={(code) => handleLookupRentMember(code)}
+                  errorMessage={rentLookupError}
+                />
               </div>
 
               {/* Rental Duration Preset & Input */}
@@ -585,13 +586,22 @@ export default function LockersPage() {
                   disabled={rentSubmitting || !rentResolvedMember}
                   className="h-8 text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
                 >
-                  {rentSubmitting ? "Reserving..." : `Confirm Rental (${rentPriceETB} ETB)`}
+                  Review & Confirm ({rentPriceETB} ETB)
                 </Button>
               </DialogFooter>
             </form>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Payment Pre-Flight Confirmation Safeguard Dialog */}
+      <PaymentConfirmationDialog
+        open={isConfirmRentOpen}
+        onOpenChange={setIsConfirmRentOpen}
+        details={pendingRentConfirmation}
+        onConfirm={handleConfirmSaveRent}
+        loading={rentSubmitting}
+      />
     </div>
   );
 }

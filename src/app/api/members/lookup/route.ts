@@ -10,18 +10,23 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const code = searchParams.get("code");
+    const codeParam = searchParams.get("code");
+    const queryParam = searchParams.get("q") || searchParams.get("search");
+    const query = (queryParam || codeParam || "").trim();
 
-    if (!code) {
-      return NextResponse.json({ error: "Code parameter required" }, { status: 400 });
+    if (!query) {
+      return NextResponse.json(
+        { error: "Query parameter required", members: [] },
+        { status: 400 }
+      );
     }
 
-    const member = await prisma.member.findFirst({
+    const members = await prisma.member.findMany({
       where: {
         OR: [
-          { memberCode: code.trim().toUpperCase() },
-          { phone: code.trim() },
-          { fullName: { contains: code.trim(), mode: "insensitive" } },
+          { memberCode: { contains: query, mode: "insensitive" } },
+          { phone: { contains: query, mode: "insensitive" } },
+          { fullName: { contains: query, mode: "insensitive" } },
         ],
       },
       include: {
@@ -36,22 +41,20 @@ export async function GET(request: Request) {
           take: 1,
         },
       },
+      take: 10,
+      orderBy: { fullName: "asc" },
     });
 
-    if (!member) {
-      return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    }
+    const formattedMembers = members.map((member) => {
+      const latestSub = member.subscriptions[0];
+      const isExpired =
+        !latestSub ||
+        latestSub.status !== "ACTIVE" ||
+        new Date(latestSub.endDate) < new Date();
 
-    const latestSub = member.subscriptions[0];
-    const isExpired =
-      !latestSub ||
-      latestSub.status !== "ACTIVE" ||
-      new Date(latestSub.endDate) < new Date();
+      const activeSession = member.checkinSessions[0];
 
-    const activeSession = member.checkinSessions[0];
-
-    return NextResponse.json({
-      member: {
+      return {
         id: member.id,
         memberCode: member.memberCode,
         cardVersion: member.cardVersion,
@@ -60,6 +63,7 @@ export async function GET(request: Request) {
         gender: member.gender,
         photoUrl: member.photoUrl,
         isExpired,
+        isFirstRegistration: !latestSub,
         latestSub: latestSub
           ? {
               planName: latestSub.plan.name,
@@ -73,13 +77,32 @@ export async function GET(request: Request) {
               lockerNumber: activeSession.locker?.lockerNumber,
             }
           : undefined,
-      },
+      };
+    });
+
+    // Prioritize exact member code or phone match
+    const exactMatch =
+      formattedMembers.find(
+        (m) =>
+          m.memberCode.toUpperCase() === query.toUpperCase() ||
+          m.phone === query
+      ) || formattedMembers[0];
+
+    // If caller specifically requested ?code= without ?q and nothing matched, 404 for backwards compatibility
+    if (!exactMatch && codeParam && !queryParam) {
+      return NextResponse.json({ error: "Member not found", members: [] }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      member: exactMatch || null,
+      members: formattedMembers,
     });
   } catch (error) {
     console.error("Lookup error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error looking up member" },
+      { error: error instanceof Error ? error.message : "Error looking up member", members: [] },
       { status: 500 }
     );
   }
 }
+

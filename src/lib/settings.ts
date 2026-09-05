@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: SettingDefinition[] = [
   },
   {
     key: "facility_logo_url",
-    value: "/logo.png",
+    value: "/blow.png",
     category: "GENERAL",
     description: "Official gym brand logo (PNG, JPG, SVG or WEBP)",
   },
@@ -68,6 +68,12 @@ export const DEFAULT_SETTINGS: SettingDefinition[] = [
     value: "200",
     category: "FINANCIAL",
     description: "Single-entry visitor day pass fee (ETB)",
+  },
+  {
+    key: "registration_fee",
+    value: "100",
+    category: "FINANCIAL",
+    description: "Standard one-time registration fee (ETB) charged to first-time members",
   },
   {
     key: "auto_session_timeout_hours",
@@ -121,6 +127,11 @@ export async function getAllSettings() {
   return await prisma.systemSetting.findMany({
     orderBy: [{ category: "asc" }, { key: "asc" }],
   });
+}
+
+export async function getSettingValue(key: string, defaultValue = ""): Promise<string> {
+  const setting = await prisma.systemSetting.findUnique({ where: { key } });
+  return setting?.value || defaultValue;
 }
 
 export async function updateSetting(key: string, value: string, userId?: string) {

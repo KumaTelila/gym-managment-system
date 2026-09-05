@@ -84,6 +84,25 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
+    if (body.phone !== undefined) {
+      const cleanPhone = body.phone.trim();
+      const existing = await prisma.member.findFirst({
+        where: {
+          phone: cleanPhone,
+          id: { not: id },
+        },
+        select: { fullName: true, memberCode: true },
+      });
+      if (existing) {
+        return NextResponse.json(
+          {
+            error: `Phone number "${cleanPhone}" is already registered to ${existing.fullName} (${existing.memberCode}).`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const member = await prisma.member.update({
       where: { id },
       data: {
@@ -125,8 +144,14 @@ export async function PATCH(
     });
 
     return NextResponse.json({ success: true, member });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Member edit error:", error);
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        { error: "A unique constraint failed. The phone number may already be registered to another member." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to update member" },
       { status: 500 }

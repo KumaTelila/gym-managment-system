@@ -12,7 +12,7 @@
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #1e3a8a;
+  --primary: #dc2626;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
   --secondary-foreground: #1e293b;
@@ -24,7 +24,7 @@
   --destructive-foreground: #ffffff;
   --border: #e2e8f0;
   --input: #e2e8f0;
-  --ring: #1e3a8a;
+  --ring: #dc2626;
   --radius: 0.375rem;
 }
 
@@ -37,21 +37,47 @@ body {
   letter-spacing: -0.011em;
 }
 
-/* Print formatting for CR80 PVC Cards */
+/* Print formatting for CR80 PVC Cards & Receipts */
 @media print {
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   body * {
     visibility: hidden;
   }
-  .printable-card-area, .printable-card-area * {
+
+  .printable-card-area,
+  .printable-card-area * {
     visibility: visible;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
+
   .printable-card-area {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: fixed;
+    left: 50%;
+    top: 30px;
+    transform: translateX(-50%);
     margin: 0;
-    padding: 0;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
   }
+
   .no-print {
     display: none !important;
   }

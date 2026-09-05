@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+// Next.js configuration - updated models
 const nextConfig: NextConfig = {
   // Use standalone output for Docker container builds; native serverless for Vercel
   ...(process.env.BUILD_STANDALONE === "true" ? { output: "standalone" } : {}),

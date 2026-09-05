@@ -141,6 +141,13 @@ export async function GET(request: Request) {
       });
 
       for (const sub of subscriptions) {
+        let desc = `${sub.plan.name} (${sub.plan.durationDays} Days)`;
+        if (sub.isSponsored) {
+          desc += ` [🎁 Sponsored: ${sub.sponsorReason || "Giveaway"}]`;
+        } else if (Number(sub.registrationFeeETB) > 0) {
+          desc += ` (+${Number(sub.registrationFeeETB)} ETB Reg Fee)`;
+        }
+
         transactions.push({
           id: `SUB-${sub.id}`,
           timestamp: sub.createdAt.toISOString(),
@@ -148,7 +155,7 @@ export async function GET(request: Request) {
           referenceNumber: `SUB-${sub.id.slice(0, 8).toUpperCase()}`,
           customerName: sub.member.fullName,
           customerCode: sub.member.memberCode,
-          description: `${sub.plan.name} (${sub.plan.durationDays} Days)`,
+          description: desc,
           amountETB: Number(sub.amountPaidETB),
           paymentMethod: sub.paymentMethod,
           paymentRef: sub.paymentRef,
@@ -212,6 +219,8 @@ export async function GET(request: Request) {
 
     // Calculate Summary Totals
     let totalGrossETB = 0;
+    let totalRefundsETB = 0;
+    let refundsCount = 0;
     let posSalesTotalETB = 0;
     let posSalesCount = 0;
     let subscriptionsTotalETB = 0;
@@ -227,22 +236,32 @@ export async function GET(request: Request) {
     };
 
     for (const t of filteredTransactions) {
-      totalGrossETB += t.amountETB;
+      const isRefunded =
+        t.status === "REFUNDED" ||
+        t.status === "CANCELLED" ||
+        t.status === "VOIDED";
 
-      if (t.stream === "POS") {
-        posSalesTotalETB += t.amountETB;
-        posSalesCount += 1;
-      } else if (t.stream === "SUBSCRIPTION") {
-        subscriptionsTotalETB += t.amountETB;
-        subscriptionsCount += 1;
-      } else if (t.stream === "RENTAL") {
-        rentalsTotalETB += t.amountETB;
-        rentalsCount += 1;
+      if (isRefunded) {
+        totalRefundsETB += t.amountETB;
+        refundsCount += 1;
+      } else {
+        totalGrossETB += t.amountETB;
+
+        if (t.stream === "POS") {
+          posSalesTotalETB += t.amountETB;
+          posSalesCount += 1;
+        } else if (t.stream === "SUBSCRIPTION") {
+          subscriptionsTotalETB += t.amountETB;
+          subscriptionsCount += 1;
+        } else if (t.stream === "RENTAL") {
+          rentalsTotalETB += t.amountETB;
+          rentalsCount += 1;
+        }
+
+        const methodKey = t.paymentMethod in channelSummary ? t.paymentMethod : "OTHER";
+        channelSummary[methodKey].count += 1;
+        channelSummary[methodKey].totalETB += t.amountETB;
       }
-
-      const methodKey = t.paymentMethod in channelSummary ? t.paymentMethod : "OTHER";
-      channelSummary[methodKey].count += 1;
-      channelSummary[methodKey].totalETB += t.amountETB;
     }
 
     return NextResponse.json({
@@ -253,6 +272,8 @@ export async function GET(request: Request) {
       },
       summary: {
         totalGrossETB,
+        totalRefundsETB,
+        refundsCount,
         totalTransactionsCount: filteredTransactions.length,
         posSalesTotalETB,
         posSalesCount,

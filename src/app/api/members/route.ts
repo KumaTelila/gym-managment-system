@@ -140,6 +140,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Full name, phone, and gender are required." }, { status: 400 });
     }
 
+    const cleanPhone = phone.trim();
+    const cleanFullName = fullName.trim();
+
+    // Check if phone number is already registered to provide an instant, helpful error
+    const existingMember = await prisma.member.findUnique({
+      where: { phone: cleanPhone },
+      select: { id: true, fullName: true, memberCode: true, phone: true },
+    });
+
+    if (existingMember) {
+      return NextResponse.json(
+        {
+          error: `The phone number "${cleanPhone}" is already registered to ${existingMember.fullName} (${existingMember.memberCode}). Please search for this member or use a different phone number.`,
+        },
+        { status: 409 }
+      );
+    }
+
     // F-10: Collision-safe member code generation with retry
     let member = null;
     let attempts = 0;
@@ -151,8 +169,8 @@ export async function POST(request: Request) {
         member = await prisma.member.create({
           data: {
             memberCode: candidateCode,
-            fullName: fullName.trim(),
-            phone: phone.trim(),
+            fullName: cleanFullName,
+            phone: cleanPhone,
             email: email?.trim() || null,
             gender,
             photoUrl: photoUrl?.trim() || null,
@@ -170,9 +188,30 @@ export async function POST(request: Request) {
           },
         });
       } catch (err: any) {
-        if (err?.code === "P2002" && attempts < 4) {
-          attempts++;
-          continue;
+        if (err?.code === "P2002") {
+          const target = err?.meta?.target;
+          const isMemberCode = Array.isArray(target)
+            ? target.includes("memberCode")
+            : typeof target === "string" && target.includes("memberCode");
+
+          // Only retry if it was specifically a memberCode collision
+          if (isMemberCode && attempts < 4) {
+            attempts++;
+            continue;
+          }
+
+          const isPhone = Array.isArray(target)
+            ? target.includes("phone")
+            : typeof target === "string" && target.includes("phone");
+
+          if (isPhone) {
+            return NextResponse.json(
+              {
+                error: `The phone number "${cleanPhone}" is already registered to another member.`,
+              },
+              { status: 409 }
+            );
+          }
         }
         throw err;
       }
@@ -200,6 +239,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, member });
   } catch (error: any) {
     console.error("Member create error:", error);
+
+    if (error?.code === "P2002") {
+      const target = Array.isArray(error?.meta?.target)
+        ? error.meta.target.join(", ")
+        : error?.meta?.target || "field";
+      return NextResponse.json(
+        { error: `A member with this ${target} already exists in the system.` },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { error: error?.message || "Failed to register member." },
       { status: 500 }

@@ -22,10 +22,11 @@ export async function GET() {
       include: { cashier: true },
     });
 
-    // 2. Subscriptions from today
+    // 2. Subscriptions from today (exclude cancelled / refunded)
     const subscriptions = await prisma.subscription.findMany({
       where: {
         createdAt: { gte: today },
+        status: { not: "CANCELLED" },
       },
       include: { plan: true, member: true },
     });

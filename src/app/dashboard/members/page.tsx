@@ -204,6 +204,8 @@ export default function MembersPage() {
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
   const [uploadingMemberPhoto, setUploadingMemberPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [addMemberError, setAddMemberError] = useState<string | null>(null);
+  const [editMemberError, setEditMemberError] = useState<string | null>(null);
 
   const handleUploadPhoto = async (file: File, forEdit = false) => {
     if (!file.type.startsWith("image/")) {
@@ -766,6 +768,7 @@ export default function MembersPage() {
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setAddMemberError(null);
     try {
       const res = await fetch("/api/members", {
         method: "POST",
@@ -788,18 +791,19 @@ export default function MembersPage() {
         }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to create member");
       }
 
-      const data = await res.json();
       toast.success(
         "Member Registered Successfully",
         `${data.member.fullName} registered with code ${data.member.memberCode}.`
       );
 
       setIsAddOpen(false);
+      setAddMemberError(null);
       setNewFullName("");
       setNewPhone("");
       setNewEmail("");
@@ -815,7 +819,9 @@ export default function MembersPage() {
       setNewNotes("");
       loadMembers();
     } catch (err) {
-      toast.error("Registration Error", err instanceof Error ? err.message : "Error creating member");
+      const errorMsg = err instanceof Error ? err.message : "Error creating member";
+      setAddMemberError(errorMsg);
+      toast.error("Registration Error", errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -826,6 +832,7 @@ export default function MembersPage() {
     e.preventDefault();
     if (!editingMember) return;
     setSubmitting(true);
+    setEditMemberError(null);
     try {
       const res = await fetch(`/api/members/${editingMember.id}`, {
         method: "PATCH",
@@ -848,13 +855,20 @@ export default function MembersPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to update member");
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update member");
+      }
 
       toast.success("Profile Updated", `Member profile for ${editingMember.fullName} saved.`);
       setEditingMember(null);
+      setEditMemberError(null);
       loadMembers();
     } catch (err) {
-      toast.error("Update Error", err instanceof Error ? err.message : "Error updating member");
+      const errorMsg = err instanceof Error ? err.message : "Error updating member";
+      setEditMemberError(errorMsg);
+      toast.error("Update Error", errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -869,11 +883,6 @@ export default function MembersPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
             Membership Center
-            {isAdmin && (
-              <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-300">
-                Admin Purge Enabled
-              </Badge>
-            )}
           </h1>
           <p className="text-xs text-slate-500">
             One-stop hub for subscription renewals, expiry date tracking, locker assignments & deadlines, and ID cards.
@@ -2296,7 +2305,13 @@ export default function MembersPage() {
       </Dialog>
 
       {/* MODAL 6: REGISTER NEW MEMBER */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+      <Dialog
+        open={isAddOpen}
+        onOpenChange={(open) => {
+          setIsAddOpen(open);
+          if (!open) setAddMemberError(null);
+        }}
+      >
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Register New Gym Athlete</DialogTitle>
@@ -2304,6 +2319,16 @@ export default function MembersPage() {
               Complete athlete personal information, health considerations, and contacts.
             </DialogDescription>
           </DialogHeader>
+
+          {addMemberError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2.5 my-1 animate-in fade-in">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-900">Registration Conflict</p>
+                <p className="mt-0.5 text-red-800 leading-relaxed">{addMemberError}</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleCreateMember} className="space-y-4 text-xs">
             {/* Section 1: Basic Information */}
@@ -2572,7 +2597,15 @@ export default function MembersPage() {
       </Dialog>
 
       {/* MODAL 7: EDIT MEMBER */}
-      <Dialog open={!!editingMember} onOpenChange={() => setEditingMember(null)}>
+      <Dialog
+        open={!!editingMember}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingMember(null);
+            setEditMemberError(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Member Profile</DialogTitle>
@@ -2580,6 +2613,16 @@ export default function MembersPage() {
               Update member profile details for {editingMember?.memberCode}.
             </DialogDescription>
           </DialogHeader>
+
+          {editMemberError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-2.5 my-1 animate-in fade-in">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-900">Update Conflict</p>
+                <p className="mt-0.5 text-red-800 leading-relaxed">{editMemberError}</p>
+              </div>
+            </div>
+          )}
 
           {editingMember && (
             <form onSubmit={handleUpdateMember} className="space-y-4 text-xs">

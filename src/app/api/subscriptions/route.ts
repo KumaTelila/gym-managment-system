@@ -49,12 +49,35 @@ export async function POST(request: Request) {
     }
     const session = auth.user;
 
-    const { memberId, planId, paymentMethod, paymentRef, amountPaidETB } =
-      await request.json();
+    const {
+      memberId,
+      planId,
+      paymentMethod,
+      paymentRef,
+      amountPaidETB,
+      startDate: customStartDate,
+      includeRegistrationFee,
+      isSponsored,
+      sponsorReason,
+    } = await request.json();
 
-    if (!memberId || !planId || !paymentMethod) {
+    if (!memberId || !planId) {
       return NextResponse.json(
-        { error: "Member, plan, and payment method are required." },
+        { error: "Member and plan are required." },
+        { status: 400 }
+      );
+    }
+
+    if (!isSponsored && !paymentMethod) {
+      return NextResponse.json(
+        { error: "Payment method is required for non-sponsored memberships." },
+        { status: 400 }
+      );
+    }
+
+    if (isSponsored && (!sponsorReason || !sponsorReason.trim())) {
+      return NextResponse.json(
+        { error: "A valid sponsorship or giveaway reason is required when waiving fees." },
         { status: 400 }
       );
     }
@@ -67,28 +90,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Selected plan is invalid or inactive." }, { status: 404 });
     }
 
-    // F-02: Server-side authoritative pricing. Disallow arbitrary client-submitted overrides.
-    const expectedPriceETB = Number(plan.priceETB);
+    // Determine registration fee if applicable
+    let finalRegFee = 0;
+    if (!isSponsored && includeRegistrationFee) {
+      const regSetting = await prisma.systemSetting.findUnique({
+        where: { key: "registration_fee" },
+      });
+      finalRegFee = regSetting ? parseFloat(regSetting.value) || 100 : 100;
+    }
+
+    // Authoritative pricing: 0 for sponsored, otherwise plan rate + optional registration fee
+    const expectedPriceETB = isSponsored ? 0 : Number(plan.priceETB) + finalRegFee;
+
     if (amountPaidETB !== undefined && Number(amountPaidETB) !== expectedPriceETB) {
       return NextResponse.json(
         {
-          error: `Price mismatch: plan fee is ${expectedPriceETB} ETB. Client-submitted price (${amountPaidETB} ETB) is not permitted without explicit authorization.`,
+          error: `Price mismatch: calculated fee is ${expectedPriceETB} ETB. Client-submitted price (${amountPaidETB} ETB) is not permitted without explicit authorization.`,
         },
         { status: 400 }
       );
     }
 
-    // Check existing active subscription to extend if needed
-    const currentActive = await prisma.subscription.findFirst({
-      where: {
-        memberId,
-        status: "ACTIVE",
-        endDate: { gt: new Date() },
-      },
-      orderBy: { endDate: "desc" },
-    });
+    // Check existing active subscription to extend if needed, or use custom start date
+    let startDate: Date;
+    if (customStartDate) {
+      startDate = new Date(customStartDate);
+      if (isNaN(startDate.getTime())) {
+        return NextResponse.json({ error: "Invalid custom start date provided." }, { status: 400 });
+      }
+    } else {
+      const currentActive = await prisma.subscription.findFirst({
+        where: {
+          memberId,
+          status: "ACTIVE",
+          endDate: { gt: new Date() },
+        },
+        orderBy: { endDate: "desc" },
+      });
+      startDate = currentActive ? new Date(currentActive.endDate) : new Date();
+    }
 
-    const startDate = currentActive ? new Date(currentActive.endDate) : new Date();
     const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
     const subscription = await prisma.subscription.create({
@@ -98,9 +139,14 @@ export async function POST(request: Request) {
         startDate,
         endDate,
         status: "ACTIVE",
-        amountPaidETB: plan.priceETB, // Server-side authoritative fee
-        paymentMethod,
-        paymentRef: paymentRef?.trim() || null,
+        amountPaidETB: expectedPriceETB,
+        registrationFeeETB: finalRegFee,
+        isSponsored: Boolean(isSponsored),
+        sponsorReason: isSponsored ? sponsorReason.trim() : null,
+        paymentMethod: isSponsored ? (paymentMethod || "OTHER") : paymentMethod,
+        paymentRef: isSponsored
+          ? (paymentRef?.trim() || "SPONSORED_GIVEAWAY")
+          : (paymentRef?.trim() || null),
         processedById: session.id,
       },
       include: {
@@ -109,10 +155,10 @@ export async function POST(request: Request) {
       },
     });
 
-    // F-12: Write audit log with client IP
+    // Write audit log with client IP
     await logAudit({
       userId: session.id,
-      action: "SUBSCRIPTION_ACTIVATED",
+      action: isSponsored ? "SUBSCRIPTION_SPONSORED_ISSUED" : "SUBSCRIPTION_ACTIVATED",
       entityType: "Subscription",
       entityId: subscription.id,
       details: {
@@ -121,8 +167,13 @@ export async function POST(request: Request) {
         planName: plan.name,
         durationDays: plan.durationDays,
         priceETB: expectedPriceETB,
-        paymentMethod,
-        paymentRef: paymentRef?.trim() || null,
+        registrationFeeETB: finalRegFee,
+        isSponsored: Boolean(isSponsored),
+        sponsorReason: isSponsored ? sponsorReason.trim() : null,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        paymentMethod: subscription.paymentMethod,
+        paymentRef: subscription.paymentRef,
       },
       ipAddress: getClientIp(request),
     });
