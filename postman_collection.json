@@ -1,0 +1,1600 @@
+{
+  "info": {
+    "_postman_id": "blow-fitness-backend-api-v2",
+    "name": "BLOW Fitness - Gym Management & Operations API",
+    "description": "Comprehensive Postman API Collection for BLOW Fitness backend covering Authentication, Front-Desk Check-In, Member Management, Subscriptions, Locker Bay Rentals, POS Store, Financial Reports, Master Data, Staff Accounts, Audit Trail, and System Settings.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "memberId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "memberCode",
+      "value": "BF-1001",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lockerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rentalId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subscriptionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "planId",
+      "value": "monthly-standard",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tabId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. System Health & Public",
+      "item": [
+        {
+          "name": "Health Check & DB Latency",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Checks system uptime, memory usage, and PostgreSQL database connectivity latency."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Public Branding & Contact Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/public",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings",
+                "public"
+              ]
+            },
+            "description": "Public unauthenticated endpoint returning gym facility name, logo URL, contact phone, email, and address."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Authentication & Session",
+      "item": [
+        {
+          "name": "Staff Login (Admin / Reception / Manager)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticates staff user and sets HTTP-only iron-session cookie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.user && jsonData.user.id) {",
+                  "    pm.collectionVariables.set(\"userId\", jsonData.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current Authenticated User (/me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Returns current staff user profile and role from the active session cookie."
+          },
+          "response": []
+        },
+        {
+          "name": "Staff Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Clears the active session cookie."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Front-Desk Check-In & Sessions",
+      "item": [
+        {
+          "name": "List Active Check-In Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkin"
+              ]
+            },
+            "description": "Returns all currently active athlete check-in sessions with locker numbers and check-in times."
+          },
+          "response": []
+        },
+        {
+          "name": "Perform Member Check-In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkin"
+              ]
+            },
+            "description": "Checks in an active member with optional assigned temporary locker number or lockerId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"lockerNumber\": \"M-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.session && jsonData.session.id) {",
+                  "    pm.collectionVariables.set(\"sessionId\", jsonData.session.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete Session Checkout & Release Locker",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkin/{{sessionId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkin",
+                "{{sessionId}}",
+                "checkout"
+              ]
+            },
+            "description": "Checks out an athlete, records checkout timestamp, and marks temporary locker AVAILABLE."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Members & Access Cards",
+      "item": [
+        {
+          "name": "List Members (with Filter & Search)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/members?search=&status=active&expiry=all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by full name, phone, or memberCode"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "active | inactive | all"
+                },
+                {
+                  "key": "expiry",
+                  "value": "all",
+                  "description": "all | active | expiring_soon | expired | no_plan"
+                }
+              ]
+            },
+            "description": "Query members with live search by name, phone, code, and status/expiry filters."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.members && jsonData.members.length > 0) {",
+                  "    pm.collectionVariables.set(\"memberId\", jsonData.members[0].id);",
+                  "    pm.collectionVariables.set(\"memberCode\", jsonData.members[0].memberCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register New Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ]
+            },
+            "description": "Creates a new member profile and auto-generates BF-XXXX code with card version 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Yared Hagos\",\n  \"phone\": \"+251911987654\",\n  \"email\": \"yared@example.com\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1995-04-12\",\n  \"address\": \"Bole, Addis Ababa\",\n  \"idNumber\": \"ETH-982341\",\n  \"fitnessGoal\": \"Muscle Gain & Bodybuilding\",\n  \"bloodGroup\": \"O+\",\n  \"medicalHistory\": \"None\",\n  \"emergencyContactName\": \"Almaz Bekele\",\n  \"emergencyContactPhone\": \"+251911112233\",\n  \"notes\": \"Preferred morning workout slots\",\n  \"photoUrl\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.member && jsonData.member.id) {",
+                  "    pm.collectionVariables.set(\"memberId\", jsonData.member.id);",
+                  "    pm.collectionVariables.set(\"memberCode\", jsonData.member.memberCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Member Profile Details & History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "description": "Fetches full athlete dossier including active subscription, locker rentals, and checkin history."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member Profile Info",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "description": "Updates contact info, medical notes, emergency contacts, or archive status.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+251911987654\",\n  \"email\": \"yared.updated@example.com\",\n  \"fitnessGoal\": \"Strength & Powerlifting\",\n  \"notes\": \"Updated profile note\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Re-issue Lost Physical Card",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/members/{{memberId}}/replace-card",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members",
+                "{{memberId}}",
+                "replace-card"
+              ]
+            },
+            "description": "Increments physical card version (v2, v3...) to invalidate lost cards and logs 100 ETB replacement fee."
+          },
+          "response": []
+        },
+        {
+          "name": "Lookup Member by Code / Phone / QR",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/members/lookup?code={{memberCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "{{memberCode}}",
+                  "description": "Member code (e.g. BF-1001)"
+                }
+              ]
+            },
+            "description": "Quick member lookup for front desk barcode scanners and search bars."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Permanent Purge Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "description": "Admin-only hard delete of member and related historical records."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Subscriptions & Plans",
+      "item": [
+        {
+          "name": "List Active Subscription Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscriptions"
+              ]
+            },
+            "description": "Fetches all active membership packages (e.g. Monthly, Quarterly, Annual) and recent transactions."
+          },
+          "response": []
+        },
+        {
+          "name": "Purchase / Renew Member Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscriptions"
+              ]
+            },
+            "description": "Activates or extends a membership plan for an athlete with recorded payment method.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"planId\": \"monthly-standard\",\n  \"paymentMethod\": \"TELEBIRR\",\n  \"paymentRef\": \"TB-849201\",\n  \"amountPaidETB\": 2500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.subscription && jsonData.subscription.id) {",
+                  "    pm.collectionVariables.set(\"subscriptionId\", jsonData.subscription.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adjust Subscription Expiry Date (Add Days or Set Date)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscriptions",
+                "{{subscriptionId}}"
+              ]
+            },
+            "description": "Front desk adjustment to extend days (e.g. compensation) or change expiry date.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addDays\": 7,\n  \"reason\": \"Gym maintenance compensation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Locker Bay & Dedicated Rentals",
+      "item": [
+        {
+          "name": "Get Locker Bay Grid Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/lockers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lockers"
+              ]
+            },
+            "description": "Returns all lockers across Male and Female sections with status (AVAILABLE, OCCUPIED, RESERVED, MAINTENANCE)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Locker Status (Maintenance / Available)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/lockers/{{lockerId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lockers",
+                "{{lockerId}}",
+                "status"
+              ]
+            },
+            "description": "Toggles a locker status between AVAILABLE, MAINTENANCE, etc.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Dedicated Locker Rentals & Deadlines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals"
+              ]
+            },
+            "description": "Returns all active monthly/dedicated locker rentals with countdowns and overdue flags."
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Dedicated Locker Rental",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals"
+              ]
+            },
+            "description": "Assigns a monthly locker to a member with deadline and fee record.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberId\": \"{{memberId}}\",\n  \"lockerId\": \"{{lockerId}}\",\n  \"durationDays\": 30,\n  \"priceETB\": 500,\n  \"paymentMethod\": \"CASH\",\n  \"paymentRef\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.rental && jsonData.rental.id) {",
+                  "    pm.collectionVariables.set(\"rentalId\", jsonData.rental.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Extend Dedicated Locker Deadline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalId}}/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalId}}",
+                "extend"
+              ]
+            },
+            "description": "Extends a locker contract by N days with renewal fee payment.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addDays\": 30,\n  \"priceETB\": 500,\n  \"paymentMethod\": \"TELEBIRR\",\n  \"paymentRef\": \"TB-928410\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Terminate & Vacate Locker Rental",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalId}}/terminate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalId}}",
+                "terminate"
+              ]
+            },
+            "description": "Releases the dedicated locker and returns its status to AVAILABLE in the locker pool."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Point of Sale (POS) & Store",
+      "item": [
+        {
+          "name": "List POS Products & Live Stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pos/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "products"
+              ]
+            },
+            "description": "Returns all inventory products by category with prices, barcodes, and current stock count."
+          },
+          "response": []
+        },
+        {
+          "name": "Process POS Direct Checkout Sale",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/pos/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "checkout"
+              ]
+            },
+            "description": "Completes a retail POS sale, decrements inventory stock, and generates order receipt.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"unitPriceETB\": 35\n    }\n  ],\n  \"paymentMethod\": \"CASH\",\n  \"paymentRef\": \"\",\n  \"memberId\": \"{{memberId}}\",\n  \"notes\": \"Front desk walk-in purchase\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.order && jsonData.order.id) {",
+                  "    pm.collectionVariables.set(\"orderId\", jsonData.order.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Open Unpaid Member Tabs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pos/tabs?memberId={{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "tabs"
+              ],
+              "query": [
+                {
+                  "key": "memberId",
+                  "value": "{{memberId}}",
+                  "description": "Optional member ID filter"
+                }
+              ]
+            },
+            "description": "Returns all open unpaid tabs grouped or filtered by member."
+          },
+          "response": []
+        },
+        {
+          "name": "Settle Open Member Tab",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/pos/tabs/{{tabId}}/settle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "tabs",
+                "{{tabId}}",
+                "settle"
+              ]
+            },
+            "description": "Settles an open tab and records final payment.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"TELEBIRR\",\n  \"paymentRef\": \"TB-839201\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Financial & Operations Reports",
+      "item": [
+        {
+          "name": "Unified Sales Report & Revenue Breakdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/sales?timeframe=today&stream=ALL&paymentMethod=ALL&startDate=2026-09-01&endDate=2026-09-05",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "sales"
+              ],
+              "query": [
+                {
+                  "key": "timeframe",
+                  "value": "today",
+                  "description": "today | yesterday | week | month | custom"
+                },
+                {
+                  "key": "stream",
+                  "value": "ALL",
+                  "description": "ALL | POS | SUBSCRIPTION | RENTAL"
+                },
+                {
+                  "key": "paymentMethod",
+                  "value": "ALL",
+                  "description": "ALL | CASH | TELEBIRR | CBE_TRANSFER"
+                },
+                {
+                  "key": "startDate",
+                  "value": "2026-09-01",
+                  "description": "Optional for custom timeframe"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2026-09-05",
+                  "description": "Optional for custom timeframe"
+                }
+              ]
+            },
+            "description": "Returns unified financial transaction stream across POS, Subscriptions, and Locker Rentals."
+          },
+          "response": []
+        },
+        {
+          "name": "Cash Register & Shift Reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/cash",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "cash"
+              ]
+            },
+            "description": "Daily cash summary and breakdown by payment channels for drawer balancing."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8. Master Data Management",
+      "item": [
+        {
+          "name": "Get Complete Master Data Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data"
+              ]
+            },
+            "description": "Admin/Manager overview of all plans, categories, payment accounts, and locker counts."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Subscription Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "plans"
+              ]
+            },
+            "description": "Adds a new membership tier in master data.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Couples Annual VIP\",\n  \"durationDays\": 365,\n  \"priceETB\": 38000,\n  \"description\": \"Full all-inclusive access for 2 persons\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Subscription Plan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/plans/{{planId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "plans",
+                "{{planId}}"
+              ]
+            },
+            "description": "Updates price, duration, or active status of a plan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priceETB\": 40000,\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create New Locker in Master Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/lockers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "lockers"
+              ]
+            },
+            "description": "Adds a locker to the facility grid.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lockerNumber\": \"M-17\",\n  \"section\": \"MALE\",\n  \"status\": \"AVAILABLE\",\n  \"notes\": \"Top tier locker\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Locker in Master Data",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/lockers/{{lockerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "lockers",
+                "{{lockerId}}"
+              ]
+            },
+            "description": "Updates locker number, section, or notes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Repaired lock mechanism\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Locker in Master Data",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/lockers/{{lockerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "lockers",
+                "{{lockerId}}"
+              ]
+            },
+            "description": "Deletes an unassigned locker from the pool."
+          },
+          "response": []
+        },
+        {
+          "name": "Create POS Inventory Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "products"
+              ]
+            },
+            "description": "Adds a product to the retail catalog.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Electrolyte Hydration Drink 500ml\",\n  \"categoryId\": \"\",\n  \"barcode\": \"600109\",\n  \"costPriceETB\": 40,\n  \"sellingPriceETB\": 70,\n  \"currentStock\": 50,\n  \"reorderLevel\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update POS Inventory Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "Updates product pricing, barcode, or stock level.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sellingPriceETB\": 75,\n  \"currentStock\": 60,\n  \"reason\": \"Stock restock shipment received\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Payment Method Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "payments"
+              ]
+            },
+            "description": "Adds a merchant account / bank account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Awash Bank Direct\",\n  \"accountNumber\": \"0132049281900\",\n  \"accountHolder\": \"Blow Fitness PLC\",\n  \"instructions\": \"Transfer via Awash Mobile Banking\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Payment Method Account",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/master-data/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "master-data",
+                "payments",
+                "{{paymentId}}"
+              ]
+            },
+            "description": "Updates bank details or instructions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instructions\": \"Transfer and present confirmation screenshot\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9. Staff & User Accounts",
+      "item": [
+        {
+          "name": "List Staff Directory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Admin endpoint to list all staff accounts, roles, and status."
+          },
+          "response": []
+        },
+        {
+          "name": "Create New Staff Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Admin endpoint to create a new staff account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"coach_samuel\",\n  \"fullName\": \"Samuel Tilahun\",\n  \"password\": \"password123\",\n  \"role\": \"RECEPTIONIST\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Staff Account & Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "Admin endpoint to edit staff name, role, password, or toggle active status.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Samuel Tilahun (Lead)\",\n  \"role\": \"FINANCE_OWNER\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "10. Security & Audit Trail",
+      "item": [
+        {
+          "name": "Query Security & System Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit?page=1&limit=50&action=&entityType=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Filter by action (e.g. MEMBER_CREATED, POS_ORDER_COMPLETED)"
+                },
+                {
+                  "key": "entityType",
+                  "value": "",
+                  "description": "Filter by entity (e.g. Member, SalesOrder)"
+                }
+              ]
+            },
+            "description": "Paginated query of security audit events with filters by action, entity type, and staff user."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "11. System Configuration & Settings",
+      "item": [
+        {
+          "name": "Get All System Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
+            },
+            "description": "Admin/Manager endpoint returning all policy, financial, branding, and payment configurations."
+          },
+          "response": []
+        },
+        {
+          "name": "Save System Settings (Bulk Update)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
+            },
+            "description": "Updates system configuration key-value pairs with audit logging.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"settings\": [\n    {\n      \"key\": \"facility_name\",\n      \"value\": \"Blow Fitness\"\n    },\n    {\n      \"key\": \"facility_logo_url\",\n      \"value\": \"/logo.png\"\n    },\n    {\n      \"key\": \"facility_phone\",\n      \"value\": \"+251 91 100 2233\"\n    },\n    {\n      \"key\": \"card_replacement_fee\",\n      \"value\": \"100\"\n    },\n    {\n      \"key\": \"dedicated_locker_fee\",\n      \"value\": \"500\"\n    },\n    {\n      \"key\": \"calendar_display_mode\",\n      \"value\": \"DUAL\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "12. File & Asset Uploads",
+      "item": [
+        {
+          "name": "Upload Image / Member Photo / Logo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload"
+              ]
+            },
+            "description": "Multipart form-data file upload (PNG, JPG, WEBP). Returns public image URL.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Image file to upload"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
