@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { getSession, requireRole } from "@/lib/session";
+import { logAudit, getClientIp } from "@/lib/audit";
 
 export async function GET(request: Request) {
   try {
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Subscription error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error fetching subscriptions" },
+      { error: "Error fetching subscriptions." },
       { status: 500 }
     );
   }
@@ -42,10 +43,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireRole("ADMIN", "RECEPTIONIST");
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const session = auth.user;
 
     const { memberId, planId, paymentMethod, paymentRef, amountPaidETB } =
       await request.json();
@@ -61,8 +63,19 @@ export async function POST(request: Request) {
       where: { id: planId },
     });
 
-    if (!plan) {
-      return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    if (!plan || !plan.isActive) {
+      return NextResponse.json({ error: "Selected plan is invalid or inactive." }, { status: 404 });
+    }
+
+    // F-02: Server-side authoritative pricing. Disallow arbitrary client-submitted overrides.
+    const expectedPriceETB = Number(plan.priceETB);
+    if (amountPaidETB !== undefined && Number(amountPaidETB) !== expectedPriceETB) {
+      return NextResponse.json(
+        {
+          error: `Price mismatch: plan fee is ${expectedPriceETB} ETB. Client-submitted price (${amountPaidETB} ETB) is not permitted without explicit authorization.`,
+        },
+        { status: 400 }
+      );
     }
 
     // Check existing active subscription to extend if needed
@@ -85,7 +98,7 @@ export async function POST(request: Request) {
         startDate,
         endDate,
         status: "ACTIVE",
-        amountPaidETB: amountPaidETB !== undefined ? amountPaidETB : plan.priceETB,
+        amountPaidETB: plan.priceETB, // Server-side authoritative fee
         paymentMethod,
         paymentRef: paymentRef?.trim() || null,
         processedById: session.id,
@@ -96,11 +109,29 @@ export async function POST(request: Request) {
       },
     });
 
+    // F-12: Write audit log with client IP
+    await logAudit({
+      userId: session.id,
+      action: "SUBSCRIPTION_ACTIVATED",
+      entityType: "Subscription",
+      entityId: subscription.id,
+      details: {
+        memberCode: subscription.member.memberCode,
+        memberName: subscription.member.fullName,
+        planName: plan.name,
+        durationDays: plan.durationDays,
+        priceETB: expectedPriceETB,
+        paymentMethod,
+        paymentRef: paymentRef?.trim() || null,
+      },
+      ipAddress: getClientIp(request),
+    });
+
     return NextResponse.json({ success: true, subscription });
   } catch (error) {
     console.error("Subscription create error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error creating subscription" },
+      { error: "Failed to create subscription. Please verify input data and try again." },
       { status: 500 }
     );
   }

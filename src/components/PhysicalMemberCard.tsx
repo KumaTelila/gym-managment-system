@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Dumbbell } from "lucide-react";
 import { formatEthiopianNumericDate } from "@/lib/ethiopian-calendar";
 
 export interface PhysicalCardMember {
@@ -84,22 +83,12 @@ export function PhysicalMemberCard({
             {/* Header: Logo & BLOW FITNESS banner */}
             <div className="flex items-center justify-between gap-2">
               {/* Left Logo Emblem */}
-              <div className="flex flex-col items-center leading-none">
-                <span className="font-black text-[9px] tracking-wider text-slate-900 uppercase -mb-0.5">
-                  BLOW
-                </span>
-                <div className="relative flex items-center justify-center">
-                  <div className="flex items-center space-x-0.5">
-                    <div className="w-1.5 h-4 bg-red-600 rounded-xs border border-black" />
-                    <div className="w-1 h-3 bg-red-600 rounded-xs border border-black" />
-                    <div className="w-4 h-1 bg-slate-900" />
-                    <div className="w-1 h-3 bg-red-600 rounded-xs border border-black" />
-                    <div className="w-1.5 h-4 bg-red-600 rounded-xs border border-black" />
-                  </div>
-                </div>
-                <span className="text-[7px] font-extrabold tracking-widest text-slate-900 uppercase mt-0.5">
-                  FITNESS
-                </span>
+              <div className="flex items-center justify-center shrink-0">
+                <img
+                  src="/logo.png"
+                  alt="BLOW FITNESS"
+                  className="h-9 w-9 object-contain"
+                />
               </div>
 
               {/* Center/Right Brand Badge */}
@@ -223,7 +212,11 @@ export function PhysicalMemberCard({
         >
           {/* Faint Background Watermark */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-15">
-            <Dumbbell className="w-44 h-44 text-slate-900 -rotate-12" />
+            <img
+              src="/logo.png"
+              alt="BLOW Watermark"
+              className="w-40 h-40 object-contain -rotate-12 filter grayscale contrast-200"
+            />
           </div>
 
           {/* Card Inset Framed Content */}

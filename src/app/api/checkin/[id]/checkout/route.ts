@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
+import { getClientIp } from "@/lib/audit";
 
 export async function POST(
   request: Request,
@@ -98,11 +99,19 @@ export async function POST(
         }
       }
 
-      // 2. Release Locker
+      // 2. Release Locker (F-15: Reconcile with active monthly rental)
       if (checkin.lockerId) {
+        const activeRental = await tx.lockerRental.findFirst({
+          where: {
+            lockerId: checkin.lockerId,
+            isActive: true,
+            endDate: { gte: new Date() },
+          },
+        });
+
         await tx.locker.update({
           where: { id: checkin.lockerId },
-          data: { status: "AVAILABLE" },
+          data: { status: activeRental ? "RESERVED" : "AVAILABLE" },
         });
       }
 
@@ -126,6 +135,7 @@ export async function POST(
           action: "SESSION_COMPLETED",
           entityType: "CheckinSession",
           entityId: id,
+          ipAddress: getClientIp(request),
           detailsJson: JSON.stringify({
             lockerNumber: checkin.locker?.lockerNumber || "None",
             memberId: checkin.memberId,

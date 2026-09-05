@@ -128,6 +128,140 @@ export default function CheckinPage() {
   const [tabPaymentRef, setTabPaymentRef] = useState("");
   const [tabSettling, setTabSettling] = useState(false);
 
+  // Rent Locker Modal state
+  const [isRentModalOpen, setIsRentModalOpen] = useState(false);
+  const [rentLockerId, setRentLockerId] = useState<string | null>(null);
+  const [rentMemberCode, setRentMemberCode] = useState("");
+  const [rentResolvedMember, setRentResolvedMember] = useState<{ id: string; fullName: string; memberCode: string } | null>(null);
+  const [rentDurationDays, setRentDurationDays] = useState(30);
+  const [rentPriceETB, setRentPriceETB] = useState(500);
+  const [rentPaymentMethod, setRentPaymentMethod] = useState<"CASH" | "TELEBIRR" | "CBE_TRANSFER">("TELEBIRR");
+  const [rentPaymentRef, setRentPaymentRef] = useState("");
+  const [rentSubmitting, setRentSubmitting] = useState(false);
+  const [rentLookupError, setRentLookupError] = useState<string | null>(null);
+
+  // Quick Member Picker to Assign Locker state
+  const [isAssignPickerOpen, setIsAssignPickerOpen] = useState(false);
+  const [assignSearch, setAssignSearch] = useState("");
+
+  const handleOpenRentModalForLocker = (targetLockerId: string) => {
+    setRentLockerId(targetLockerId);
+    if (member) {
+      setRentResolvedMember({
+        id: member.id,
+        fullName: member.fullName,
+        memberCode: member.memberCode,
+      });
+      setRentMemberCode(member.memberCode);
+    } else {
+      setRentResolvedMember(null);
+      setRentMemberCode("");
+    }
+    setRentLookupError(null);
+    setIsRentModalOpen(true);
+  };
+
+  const handleLookupRentMember = async (code: string) => {
+    if (!code.trim()) return;
+    setRentLookupError(null);
+    try {
+      const res = await fetch(`/api/members/lookup?code=${encodeURIComponent(code.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Member not found");
+      setRentResolvedMember({
+        id: data.member.id,
+        fullName: data.member.fullName,
+        memberCode: data.member.memberCode,
+      });
+    } catch (err: unknown) {
+      setRentLookupError(err instanceof Error ? err.message : "Member not found");
+      setRentResolvedMember(null);
+    }
+  };
+
+  const handleSubmitRentLocker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rentResolvedMember || !rentLockerId) {
+      toast.error("Validation Error", "Please select a member and locker.");
+      return;
+    }
+
+    setRentSubmitting(true);
+    try {
+      const res = await fetch("/api/rentals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: rentResolvedMember.id,
+          lockerId: rentLockerId,
+          durationDays: rentDurationDays,
+          priceETB: rentPriceETB,
+          paymentMethod: rentPaymentMethod,
+          paymentRef: rentPaymentRef?.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create rental contract");
+
+      const lockerNum = lockers.find((l) => l.id === rentLockerId)?.lockerNumber;
+      toast.success(
+        "Locker Rented Successfully",
+        `Locker ${lockerNum} reserved for ${rentResolvedMember.fullName} (${rentDurationDays} days).`
+      );
+
+      setIsRentModalOpen(false);
+      setSelectedLockerId(null);
+      setRentResolvedMember(null);
+      setRentMemberCode("");
+      loadLockers();
+      loadBoardMembers();
+    } catch (err: unknown) {
+      toast.error("Rental Error", err instanceof Error ? err.message : "Failed to rent locker");
+    } finally {
+      setRentSubmitting(false);
+    }
+  };
+
+  const handleAssignAndCheckinMember = async (
+    target: { id: string; memberCode: string; cardVersion: number; fullName: string },
+    lockerId: string
+  ) => {
+    setActionLoadingId(target.id);
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberCode: target.memberCode,
+          cardVersion: target.cardVersion,
+          lockerId: lockerId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Check-in failed");
+
+      const lockerNum = lockers.find((l) => l.id === lockerId)?.lockerNumber;
+      toast.success(
+        "Check-In Confirmed",
+        `${target.fullName} checked in and assigned Locker ${lockerNum || lockerId}.`
+      );
+
+      setIsAssignPickerOpen(false);
+      setSelectedLockerId(null);
+      setMember(null);
+      setScanInput("");
+      loadLockers();
+      loadBoardMembers();
+      router.refresh();
+    } catch (err: unknown) {
+      toast.error("Check-In Error", err instanceof Error ? err.message : "Failed to assign locker");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleOpenCardModal = async (target: MemberLookupResult | BoardMemberItem) => {
     const payload = `${target.memberCode}:${target.cardVersion}`;
     try {
@@ -1124,24 +1258,70 @@ export default function CheckinPage() {
                     })}
                   </div>
 
-                  {/* Selection Status Bar */}
-                  {selectedLockerId && (
-                    <div className="mt-4 flex items-center justify-between rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-900">
-                      <span>
-                        Selected Key:{" "}
-                        <strong className="font-mono text-sm">
-                          {lockers.find((l) => l.id === selectedLockerId)?.lockerNumber}
-                        </strong>{" "}
-                        ({lockers.find((l) => l.id === selectedLockerId)?.section})
-                      </span>
-                      <button
-                        onClick={() => setSelectedLockerId(null)}
-                        className="text-slate-500 hover:text-slate-800 underline text-[11px]"
-                      >
-                        Clear selection
-                      </button>
-                    </div>
-                  )}
+                  {/* Interactive Locker Action Bar (Assign or Rent) */}
+                  {selectedLockerId && (() => {
+                    const activeLocker = lockers.find((l) => l.id === selectedLockerId);
+                    if (!activeLocker) return null;
+
+                    return (
+                      <div className="mt-4 rounded-xl bg-slate-900 text-white p-3.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-mono font-bold text-sm shrink-0 shadow-xs">
+                            {activeLocker.lockerNumber}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                              <span>Locker {activeLocker.lockerNumber} Selected</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-blue-300 font-normal">
+                                {activeLocker.section} Room
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {member
+                                ? `Ready to allocate to ${member.fullName}`
+                                : "Choose an action for this free locker:"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* 1. Assign to Workout Check-In */}
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (member) {
+                                handleProcessCheckin(selectedLockerId);
+                              } else {
+                                setIsAssignPickerOpen(true);
+                              }
+                            }}
+                            className="h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs"
+                          >
+                            <UserCheck className="h-3.5 w-3.5 mr-1" />
+                            {member ? `Check In & Assign` : "Assign Check-In"}
+                          </Button>
+
+                          {/* 2. Rent Locker Monthly / Dedicated */}
+                          <Button
+                            size="sm"
+                            onClick={() => handleOpenRentModalForLocker(selectedLockerId)}
+                            className="h-8 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-xs"
+                          >
+                            <KeyRound className="h-3.5 w-3.5 mr-1" />
+                            Rent (Monthly)
+                          </Button>
+
+                          {/* Clear Selection */}
+                          <button
+                            onClick={() => setSelectedLockerId(null)}
+                            className="text-slate-400 hover:text-white text-xs px-1.5 underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>
@@ -1355,6 +1535,328 @@ export default function CheckinPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Rent Locker (Monthly Contract) Modal */}
+      <Dialog open={isRentModalOpen} onOpenChange={setIsRentModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <div className="h-7 w-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <span>Rent Dedicated Locker</span>
+            </DialogTitle>
+            <DialogDescription>
+              Assign a dedicated monthly locker to a member. The locker will be marked as Reserved.
+            </DialogDescription>
+          </DialogHeader>
+
+          {rentLockerId && (() => {
+            const locker = lockers.find((l) => l.id === rentLockerId);
+            return (
+              <form onSubmit={handleSubmitRentLocker} className="space-y-4 pt-1">
+                {/* Locker Banner */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded bg-[#1e3a8a] text-white flex items-center justify-center font-mono font-bold text-sm">
+                      {locker?.lockerNumber || rentLockerId}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-slate-900">
+                        Locker #{locker?.lockerNumber}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {locker?.section} Locker Room (Available)
+                      </div>
+                    </div>
+                  </div>
+                  <Badge variant="warning" className="text-[10px]">
+                    Reserved Contract
+                  </Badge>
+                </div>
+
+                {/* Member Lookup / Target */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Member</label>
+                  {rentResolvedMember ? (
+                    <div className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 bg-emerald-50">
+                      <div>
+                        <div className="text-xs font-bold text-emerald-950">
+                          {rentResolvedMember.fullName}
+                        </div>
+                        <div className="text-[11px] font-mono text-emerald-700">
+                          {rentResolvedMember.memberCode}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setRentResolvedMember(null);
+                          setRentMemberCode("");
+                        }}
+                        className="h-7 text-xs text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100/50"
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Member code (e.g. BF-1001), phone, or name..."
+                          value={rentMemberCode}
+                          onChange={(e) => setRentMemberCode(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleLookupRentMember(rentMemberCode);
+                            }
+                          }}
+                          className="h-9 text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleLookupRentMember(rentMemberCode)}
+                          className="h-9 text-xs shrink-0"
+                        >
+                          <Search className="h-3.5 w-3.5 mr-1" />
+                          Lookup
+                        </Button>
+                      </div>
+                      {rentLookupError && (
+                        <p className="text-[11px] text-red-600 font-medium">{rentLookupError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Rental Duration Preset & Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Rental Duration (Days)
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { label: "1 Mo (30d)", days: 30 },
+                      { label: "2 Mo (60d)", days: 60 },
+                      { label: "3 Mo (90d)", days: 90 },
+                      { label: "1 Yr (365d)", days: 365 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.days}
+                        type="button"
+                        onClick={() => setRentDurationDays(opt.days)}
+                        className={`py-1.5 text-xs font-medium rounded border transition-colors ${
+                          rentDurationDays === opt.days
+                            ? "bg-[#1e3a8a] text-white border-[#1e3a8a] font-bold"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={rentDurationDays}
+                    onChange={(e) => setRentDurationDays(Number(e.target.value))}
+                    className="h-8 text-xs font-mono mt-1"
+                    placeholder="Custom days"
+                  />
+                </div>
+
+                {/* Fee (ETB) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Rental Fee (ETB)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={rentPriceETB}
+                    onChange={(e) => setRentPriceETB(Number(e.target.value))}
+                    className="h-8 text-xs font-mono"
+                    placeholder="e.g. 500"
+                  />
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Payment Method</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(["TELEBIRR", "CASH", "CBE_TRANSFER"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setRentPaymentMethod(m)}
+                        className={`py-1.5 text-xs font-semibold rounded border transition-colors ${
+                          rentPaymentMethod === m
+                            ? "bg-[#1e3a8a] text-white border-[#1e3a8a]"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {m === "CBE_TRANSFER" ? "CBE Birr" : m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment Reference (for digital) */}
+                {rentPaymentMethod !== "CASH" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Transaction Slip / Ref #
+                    </label>
+                    <Input
+                      value={rentPaymentRef}
+                      onChange={(e) => setRentPaymentRef(e.target.value)}
+                      placeholder="e.g. Telebirr / CBE transaction reference"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                )}
+
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsRentModalOpen(false)}
+                    className="h-8 text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={rentSubmitting || !rentResolvedMember}
+                    className="h-8 text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
+                  >
+                    {rentSubmitting ? "Reserving..." : `Confirm Rental (${rentPriceETB} ETB)`}
+                  </Button>
+                </DialogFooter>
+              </form>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Locker Member Picker Modal */}
+      <Dialog open={isAssignPickerOpen} onOpenChange={setIsAssignPickerOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                <UserCheck className="h-4 w-4" />
+              </div>
+              <span>
+                Assign Locker #{lockers.find((l) => l.id === selectedLockerId)?.lockerNumber} to Member
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              Choose an active member checking in today to hand over this locker key.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-1">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                placeholder="Search member name, code, phone..."
+                value={assignSearch}
+                onChange={(e) => setAssignSearch(e.target.value)}
+                className="pl-8 h-8 text-xs bg-slate-50"
+              />
+            </div>
+
+            {/* Member List */}
+            <div className="max-h-72 overflow-y-auto space-y-1.5 divide-y divide-slate-100 pr-1">
+              {boardMembers
+                .filter((m) => {
+                  const activeSession = m.checkinSessions[0];
+                  if (activeSession) return false; // Already in gym
+                  if (!assignSearch.trim()) return true;
+                  const q = assignSearch.toLowerCase();
+                  return (
+                    m.fullName.toLowerCase().includes(q) ||
+                    m.memberCode.toLowerCase().includes(q) ||
+                    m.phone.toLowerCase().includes(q)
+                  );
+                })
+                .map((m) => {
+                  const sub = m.subscriptions[0];
+                  const isExpired = !sub || sub.status !== "ACTIVE" || new Date(sub.endDate) < new Date();
+
+                  return (
+                    <div
+                      key={m.id}
+                      className="pt-1.5 first:pt-0 flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          {m.fullName
+                            .split(" ")
+                            .map((n) => n[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                            <span>{m.fullName}</span>
+                            <span className="font-mono text-[10px] text-slate-400 font-normal">
+                              {m.memberCode}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {sub?.plan?.name || "Standard Membership"} • {m.gender}
+                            {isExpired && (
+                              <span className="ml-1 text-amber-600 font-semibold">(Expired)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        disabled={actionLoadingId === m.id || !selectedLockerId || isExpired}
+                        onClick={() => {
+                          if (selectedLockerId) {
+                            handleAssignAndCheckinMember(m, selectedLockerId);
+                          }
+                        }}
+                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                      >
+                        {actionLoadingId === m.id ? "Checking In..." : "Assign & Check In"}
+                      </Button>
+                    </div>
+                  );
+                })}
+
+              {boardMembers.filter((m) => !m.checkinSessions[0]).length === 0 && (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No eligible members found.
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="pt-2 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAssignPickerOpen(false)}
+                className="h-8 text-xs"
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

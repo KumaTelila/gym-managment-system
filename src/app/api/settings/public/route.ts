@@ -22,7 +22,7 @@ export async function GET() {
 
     const config: Record<string, string> = {
       facility_name: "Blow Fitness",
-      facility_logo_url: "",
+      facility_logo_url: "/logo.png",
       facility_tagline: "Premier Athletic & Performance Center",
       facility_address: "Bole Medhanialem, Camoros St, Addis Ababa, Ethiopia",
       facility_phone: "+251 91 100 2233",

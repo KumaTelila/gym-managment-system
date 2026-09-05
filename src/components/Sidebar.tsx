@@ -20,7 +20,6 @@ import {
   MoreVertical,
   LogOut,
   User,
-  Dumbbell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -196,16 +195,12 @@ export function Sidebar({
     >
       {/* Brand Header (dashboard-01 style) */}
       <div className="flex items-center gap-3 px-2 py-2 mb-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1e3a8a] text-white shadow-xs overflow-hidden shrink-0">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={facilityName}
-              className="h-full w-full object-contain p-0.5 bg-white"
-            />
-          ) : (
-            <Dumbbell className="h-4 w-4" />
-          )}
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200/80 shadow-xs overflow-hidden shrink-0">
+          <img
+            src={logoUrl || "/logo.png"}
+            alt={facilityName}
+            className="h-full w-full object-contain p-0.5"
+          />
         </div>
         <div className="grid flex-1 leading-tight min-w-0">
           <span className="truncate text-xs font-bold tracking-tight text-slate-900">

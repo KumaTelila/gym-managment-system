@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { SessionUser } from "@/lib/session";
 import { Separator } from "@/components/ui/separator";
 
@@ -63,16 +63,12 @@ export function Header({ mobileMenuOpen, onToggleMobileMenu }: HeaderProps) {
 
         {/* Mobile Brand */}
         <div className="flex items-center gap-2 lg:hidden">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1e3a8a] text-white shadow-2xs overflow-hidden shrink-0">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={facilityName}
-                className="h-full w-full object-contain p-0.5 bg-white"
-              />
-            ) : (
-              <Dumbbell className="h-4 w-4" />
-            )}
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white border border-slate-200/80 shadow-2xs overflow-hidden shrink-0">
+            <img
+              src={logoUrl || "/logo.png"}
+              alt={facilityName}
+              className="h-full w-full object-contain p-0.5"
+            />
           </div>
           <span className="text-xs font-bold tracking-tight text-slate-900">
             {facilityName}

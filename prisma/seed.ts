@@ -4,6 +4,12 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PROD_SEED !== "true") {
+    throw new Error(
+      "FATAL: Database seeding with default demo credentials is blocked in production. Set ALLOW_PROD_SEED=true if this is intentional."
+    );
+  }
+
   console.log("Seeding database...");
 
   // 1. Staff Users

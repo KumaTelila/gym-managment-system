@@ -10,11 +10,25 @@ export interface SessionUser {
 }
 
 const SESSION_COOKIE = "blow_fitness_session";
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || "blow-fitness-session-secret-salt-2026-production-ready";
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "FATAL SECURITY MISCONFIGURATION: SESSION_SECRET environment variable must be configured and at least 32 characters in production."
+      );
+    }
+    console.warn(
+      "[SECURITY WARNING] SESSION_SECRET is unset or less than 32 characters. Using a local development fallback. Set SESSION_SECRET in production!"
+    );
+    return secret || "blow-fitness-local-dev-secret-do-not-use-in-production-32c";
+  }
+  return secret;
+}
 
 function signToken(payload: string): string {
-  return crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+  return crypto.createHmac("sha256", getSessionSecret()).update(payload).digest("hex");
 }
 
 function verifySignature(payload: string, signature: string): boolean {

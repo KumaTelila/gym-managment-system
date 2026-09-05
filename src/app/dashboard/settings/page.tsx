@@ -307,10 +307,12 @@ export default function SettingsPage() {
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center text-slate-400 text-center">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#1e3a8a] text-white mb-1 shadow-2xs">
-                          <Dumbbell className="h-4 w-4" />
-                        </div>
-                        <span className="text-[10px] font-medium text-slate-500">Default Icon</span>
+                        <img
+                          src="/logo.png"
+                          alt="Blow Fitness Default Logo"
+                          className="h-10 w-10 object-contain mb-1"
+                        />
+                        <span className="text-[10px] font-medium text-slate-500">Default Blow Logo</span>
                       </div>
                     )}
                   </div>

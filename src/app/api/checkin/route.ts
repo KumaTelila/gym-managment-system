@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
+import { getClientIp } from "@/lib/audit";
 
 export async function GET() {
   try {
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     }
     const session = auth.user;
 
-    const { memberCode, cardVersion, lockerId } = await request.json();
+    const { memberCode, cardVersion, lockerId, isManualOverride, overrideReason } = await request.json();
 
     if (!memberCode) {
       return NextResponse.json({ error: "Member code is required." }, { status: 400 });
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     const cleanCode = memberCode.trim().toUpperCase();
     const now = new Date();
 
-    // 1. Find member and verify current active subscription window (AUD-005)
+    // 1. Find member and verify current active subscription window
     const member = await prisma.member.findUnique({
       where: { memberCode: cleanCode },
       include: {
@@ -63,8 +64,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Member not found or account is deactivated." }, { status: 404 });
     }
 
-    // 2. Validate Card Version (AUD-006)
-    if (cardVersion !== undefined && cardVersion !== null) {
+    // 2. Validate Card Version (F-05)
+    if (!isManualOverride) {
+      if (cardVersion === undefined || cardVersion === null) {
+        return NextResponse.json({
+          error: "Physical card version is required. For manual override without card, specify manual override.",
+        }, { status: 400 });
+      }
+
       if (Number(cardVersion) !== member.cardVersion) {
         return NextResponse.json({
           error: `Inactive card presented (v${cardVersion}). A replacement card (v${member.cardVersion}) was previously issued.`,
@@ -72,7 +79,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Validate Subscription validity window (AUD-005)
+    // 3. Validate Subscription validity window
     const activeSub = member.subscriptions[0];
     if (!activeSub) {
       // Find latest subscription to give informative message
@@ -92,9 +99,9 @@ export async function POST(request: Request) {
       }, { status: 402 });
     }
 
-    // 4. Concurrency-Safe Transaction (AUD-002, AUD-003)
+    // 4. Concurrency-Safe Transaction (F-03, F-04)
     const newSession = await prisma.$transaction(async (tx) => {
-      // Check for existing active check-in inside the transaction (AUD-002)
+      // Check for existing active check-in inside the transaction (F-03)
       const existingActive = await tx.checkinSession.findFirst({
         where: {
           memberId: member.id,
@@ -114,7 +121,7 @@ export async function POST(request: Request) {
 
       let assignedLocker = null;
 
-      // Atomic conditional locker allocation (AUD-003)
+      // Atomic conditional locker allocation
       if (lockerId) {
         const lockerUpdate = await tx.locker.updateMany({
           where: {
@@ -152,14 +159,17 @@ export async function POST(request: Request) {
       await tx.auditLog.create({
         data: {
           userId: session.id,
-          action: "SESSION_STARTED",
+          action: isManualOverride ? "SESSION_STARTED_MANUAL_OVERRIDE" : "SESSION_STARTED",
           entityType: "CheckinSession",
           entityId: createdSession.id,
+          ipAddress: getClientIp(request),
           detailsJson: JSON.stringify({
             memberCode: member.memberCode,
             memberName: member.fullName,
             lockerNumber: assignedLocker?.lockerNumber || "None",
             cardVersion: member.cardVersion,
+            manualOverride: Boolean(isManualOverride),
+            overrideReason: overrideReason || null,
           }),
         },
       });
@@ -168,16 +178,24 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, session: newSession });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("Check-in error:", err);
-    const statusCode = (err as any)?.statusCode || 500;
+
+    // Handle unique constraint conflict (e.g. concurrent active session creation)
+    if (err?.code === "P2002") {
+      return NextResponse.json(
+        { error: "Member is already checked in (active session conflict)." },
+        { status: 409 }
+      );
+    }
+
+    const statusCode = err?.statusCode || 500;
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : "Failed to process check-in",
-        activeSession: (err as any)?.activeSession,
+        error: err instanceof Error ? err.message : "Failed to process check-in.",
+        activeSession: err?.activeSession,
       },
       { status: statusCode }
     );
   }
 }
-

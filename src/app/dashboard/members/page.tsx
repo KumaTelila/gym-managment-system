@@ -22,7 +22,6 @@ import {
   RefreshCw,
   Printer,
   AlertCircle,
-  Dumbbell,
   Edit2,
   Eye,
   Archive,

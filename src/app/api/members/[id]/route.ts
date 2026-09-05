@@ -54,6 +54,13 @@ export async function GET(
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
+    // F-18 Data Governance: Mask sensitive government ID number for front-desk reception role
+    if (session.role === "RECEPTIONIST" && member.idNumber) {
+      member.idNumber = member.idNumber.length > 4
+        ? `••••••${member.idNumber.slice(-4)}`
+        : "••••";
+    }
+
     return NextResponse.json({ member });
   } catch (error) {
     console.error("Member details fetch error:", error);

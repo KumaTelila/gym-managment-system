@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: SettingDefinition[] = [
   },
   {
     key: "facility_logo_url",
-    value: "",
+    value: "/logo.png",
     category: "GENERAL",
     description: "Official gym brand logo (PNG, JPG, SVG or WEBP)",
   },

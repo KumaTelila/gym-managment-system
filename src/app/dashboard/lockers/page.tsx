@@ -5,7 +5,25 @@ import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertTriangle, KeyRound, Wrench, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  KeyRound,
+  Wrench,
+  RefreshCw,
+  Search,
+  UserCheck,
+  LogIn,
+} from "lucide-react";
 import { toast } from "@/components/ui/toaster";
 
 interface LockerData {
@@ -30,6 +48,90 @@ export default function LockersPage() {
   const [lockers, setLockers] = useState<LockerData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<"ALL" | "MALE" | "FEMALE">("ALL");
+
+  // Rent Locker Modal State
+  const [isRentModalOpen, setIsRentModalOpen] = useState(false);
+  const [rentLocker, setRentLocker] = useState<LockerData | null>(null);
+  const [rentMemberCode, setRentMemberCode] = useState("");
+  const [rentResolvedMember, setRentResolvedMember] = useState<{
+    id: string;
+    fullName: string;
+    memberCode: string;
+  } | null>(null);
+  const [rentDurationDays, setRentDurationDays] = useState(30);
+  const [rentPriceETB, setRentPriceETB] = useState(500);
+  const [rentPaymentMethod, setRentPaymentMethod] = useState<"CASH" | "TELEBIRR" | "CBE_TRANSFER">("TELEBIRR");
+  const [rentPaymentRef, setRentPaymentRef] = useState("");
+  const [rentSubmitting, setRentSubmitting] = useState(false);
+  const [rentLookupError, setRentLookupError] = useState<string | null>(null);
+
+  const handleOpenRentModal = (locker: LockerData) => {
+    setRentLocker(locker);
+    setRentResolvedMember(null);
+    setRentMemberCode("");
+    setRentLookupError(null);
+    setIsRentModalOpen(true);
+  };
+
+  const handleLookupRentMember = async (code: string) => {
+    if (!code.trim()) return;
+    setRentLookupError(null);
+    try {
+      const res = await fetch(`/api/members/lookup?code=${encodeURIComponent(code.trim())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Member not found");
+      setRentResolvedMember({
+        id: data.member.id,
+        fullName: data.member.fullName,
+        memberCode: data.member.memberCode,
+      });
+    } catch (err: unknown) {
+      setRentLookupError(err instanceof Error ? err.message : "Member not found");
+      setRentResolvedMember(null);
+    }
+  };
+
+  const handleSubmitRent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rentResolvedMember || !rentLocker) {
+      toast.error("Validation Error", "Please select a member and locker.");
+      return;
+    }
+
+    setRentSubmitting(true);
+    try {
+      const res = await fetch("/api/rentals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: rentResolvedMember.id,
+          lockerId: rentLocker.id,
+          durationDays: rentDurationDays,
+          priceETB: rentPriceETB,
+          paymentMethod: rentPaymentMethod,
+          paymentRef: rentPaymentRef?.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create rental contract");
+
+      toast.success(
+        "Locker Rented Successfully",
+        `Locker ${rentLocker.lockerNumber} reserved for ${rentResolvedMember.fullName} (${rentDurationDays} days).`
+      );
+
+      setIsRentModalOpen(false);
+      setRentLocker(null);
+      setRentResolvedMember(null);
+      setRentMemberCode("");
+      loadLockers();
+    } catch (err: unknown) {
+      toast.error("Rental Error", err instanceof Error ? err.message : "Failed to rent locker");
+    } finally {
+      setRentSubmitting(false);
+    }
+  };
 
   const loadLockers = async () => {
     setLoading(true);
@@ -242,12 +344,34 @@ export default function LockersPage() {
                     Release Key
                   </button>
                 ) : locker.status === "AVAILABLE" ? (
-                  <button
-                    onClick={() => handleUpdateStatus(locker.id, "MAINTENANCE", locker.lockerNumber)}
-                    className="text-[10px] text-slate-500 hover:text-slate-900"
-                  >
-                    Report Defect
-                  </button>
+                  <div className="w-full space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        size="sm"
+                        onClick={() => router.push("/dashboard/checkin")}
+                        className="h-7 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-1.5 shadow-2xs"
+                      >
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Assign
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenRentModal(locker)}
+                        className="h-7 text-[11px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 px-1.5 shadow-2xs"
+                      >
+                        <KeyRound className="h-3 w-3 mr-1" />
+                        Rent
+                      </Button>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => handleUpdateStatus(locker.id, "MAINTENANCE", locker.lockerNumber)}
+                        className="text-[10px] text-slate-400 hover:text-slate-700 underline"
+                      >
+                        Report Defect
+                      </button>
+                    </div>
+                  </div>
                 ) : locker.status === "MAINTENANCE" ? (
                   <button
                     onClick={() => handleUpdateStatus(locker.id, "AVAILABLE", locker.lockerNumber)}
@@ -263,6 +387,211 @@ export default function LockersPage() {
           );
         })}
       </div>
+
+      {/* Rent Locker (Monthly Contract) Modal */}
+      <Dialog open={isRentModalOpen} onOpenChange={setIsRentModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <div className="h-7 w-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <span>Rent Dedicated Locker</span>
+            </DialogTitle>
+            <DialogDescription>
+              Assign a dedicated monthly locker to a member. The locker status will become Reserved.
+            </DialogDescription>
+          </DialogHeader>
+
+          {rentLocker && (
+            <form onSubmit={handleSubmitRent} className="space-y-4 pt-1">
+              {/* Locker Banner */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded bg-[#1e3a8a] text-white flex items-center justify-center font-mono font-bold text-sm">
+                    {rentLocker.lockerNumber}
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm text-slate-900">
+                      Locker #{rentLocker.lockerNumber}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {rentLocker.section} Locker Room (Available)
+                    </div>
+                  </div>
+                </div>
+                <Badge variant="warning" className="text-[10px]">
+                  Reserved Contract
+                </Badge>
+              </div>
+
+              {/* Member Lookup */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Member</label>
+                {rentResolvedMember ? (
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 bg-emerald-50">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-950">
+                        {rentResolvedMember.fullName}
+                      </div>
+                      <div className="text-[11px] font-mono text-emerald-700">
+                        {rentResolvedMember.memberCode}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setRentResolvedMember(null);
+                        setRentMemberCode("");
+                      }}
+                      className="h-7 text-xs text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100/50"
+                    >
+                      Change
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Member code (e.g. BF-1001), phone, or name..."
+                        value={rentMemberCode}
+                        onChange={(e) => setRentMemberCode(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleLookupRentMember(rentMemberCode);
+                          }
+                        }}
+                        className="h-9 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleLookupRentMember(rentMemberCode)}
+                        className="h-9 text-xs shrink-0"
+                      >
+                        <Search className="h-3.5 w-3.5 mr-1" />
+                        Lookup
+                      </Button>
+                    </div>
+                    {rentLookupError && (
+                      <p className="text-[11px] text-red-600 font-medium">{rentLookupError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Rental Duration Preset & Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">
+                  Rental Duration (Days)
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: "1 Mo (30d)", days: 30 },
+                    { label: "2 Mo (60d)", days: 60 },
+                    { label: "3 Mo (90d)", days: 90 },
+                    { label: "1 Yr (365d)", days: 365 },
+                  ].map((opt) => (
+                    <button
+                      key={opt.days}
+                      type="button"
+                      onClick={() => setRentDurationDays(opt.days)}
+                      className={`py-1.5 text-xs font-medium rounded border transition-colors ${
+                        rentDurationDays === opt.days
+                          ? "bg-[#1e3a8a] text-white border-[#1e3a8a] font-bold"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  type="number"
+                  min="1"
+                  value={rentDurationDays}
+                  onChange={(e) => setRentDurationDays(Number(e.target.value))}
+                  className="h-8 text-xs font-mono mt-1"
+                  placeholder="Custom days"
+                />
+              </div>
+
+              {/* Fee (ETB) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">
+                  Rental Fee (ETB)
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={rentPriceETB}
+                  onChange={(e) => setRentPriceETB(Number(e.target.value))}
+                  className="h-8 text-xs font-mono"
+                  placeholder="e.g. 500"
+                />
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Payment Method</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["TELEBIRR", "CASH", "CBE_TRANSFER"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setRentPaymentMethod(m)}
+                      className={`py-1.5 text-xs font-semibold rounded border transition-colors ${
+                        rentPaymentMethod === m
+                          ? "bg-[#1e3a8a] text-white border-[#1e3a8a]"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {m === "CBE_TRANSFER" ? "CBE Birr" : m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment Reference (for digital) */}
+              {rentPaymentMethod !== "CASH" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Transaction Slip / Ref #
+                  </label>
+                  <Input
+                    value={rentPaymentRef}
+                    onChange={(e) => setRentPaymentRef(e.target.value)}
+                    placeholder="e.g. Telebirr / CBE transaction reference"
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+              )}
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsRentModalOpen(false)}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={rentSubmitting || !rentResolvedMember}
+                  className="h-8 text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
+                >
+                  {rentSubmitting ? "Reserving..." : `Confirm Rental (${rentPriceETB} ETB)`}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

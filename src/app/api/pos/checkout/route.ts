@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
-import { logAudit } from "@/lib/audit";
+import { logAudit, getClientIp } from "@/lib/audit";
 
 interface CartItemInput {
   productId: string;
@@ -93,9 +93,10 @@ export async function POST(request: Request) {
         });
       }
 
-      // 4. Generate order number
+      // 4. Generate collision-resistant order number (F-06)
       const orderCount = await tx.salesOrder.count();
-      const orderNumber = `SO-${new Date().getFullYear()}-${String(orderCount + 1).padStart(5, "0")}`;
+      const entropy = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const orderNumber = `SO-${new Date().getFullYear()}-${String(orderCount + 1).padStart(4, "0")}-${entropy}`;
 
       // 5. Create Order
       const newOrder = await tx.salesOrder.create({
@@ -137,13 +138,14 @@ export async function POST(request: Request) {
         paymentMethod: order.paymentMethod,
         itemCount: order.items.length,
       },
+      ipAddress: getClientIp(request),
     });
 
     return NextResponse.json({ success: true, order });
-  } catch (error) {
+  } catch (error: any) {
     console.error("POS checkout error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error processing sale" },
+      { error: error?.message || "Failed to process sale. Please check stock and try again." },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import { getSession, requireRole } from "@/lib/session";
+import { getClientIp } from "@/lib/audit";
 
 export async function GET(request: Request) {
   try {
@@ -111,10 +112,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireRole("ADMIN", "RECEPTIONIST");
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const session = auth.user;
 
     const body = await request.json();
     const {
@@ -138,31 +140,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Full name, phone, and gender are required." }, { status: 400 });
     }
 
-    // Generate unique member code like BF-1049
-    const count = await prisma.member.count();
-    const memberCode = `BF-${String(1001 + count).padStart(4, "0")}`;
+    // F-10: Collision-safe member code generation with retry
+    let member = null;
+    let attempts = 0;
+    const baseCount = await prisma.member.count();
 
-    const member = await prisma.member.create({
-      data: {
-        memberCode,
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        email: email?.trim() || null,
-        gender,
-        photoUrl: photoUrl?.trim() || null,
-        emergencyContactName: emergencyContactName?.trim() || null,
-        emergencyContactPhone: emergencyContactPhone?.trim() || null,
-        dateOfBirth: dateOfBirth?.trim() || null,
-        address: address?.trim() || null,
-        idNumber: idNumber?.trim() || null,
-        fitnessGoal: fitnessGoal?.trim() || null,
-        medicalHistory: medicalHistory?.trim() || null,
-        bloodGroup: bloodGroup?.trim() || null,
-        notes: notes?.trim() || null,
-        cardVersion: 1,
-        isActive: true,
-      },
-    });
+    while (!member && attempts < 5) {
+      const candidateCode = `BF-${String(1001 + baseCount + attempts).padStart(4, "0")}`;
+      try {
+        member = await prisma.member.create({
+          data: {
+            memberCode: candidateCode,
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            email: email?.trim() || null,
+            gender,
+            photoUrl: photoUrl?.trim() || null,
+            emergencyContactName: emergencyContactName?.trim() || null,
+            emergencyContactPhone: emergencyContactPhone?.trim() || null,
+            dateOfBirth: dateOfBirth?.trim() || null,
+            address: address?.trim() || null,
+            idNumber: idNumber?.trim() || null,
+            fitnessGoal: fitnessGoal?.trim() || null,
+            medicalHistory: medicalHistory?.trim() || null,
+            bloodGroup: bloodGroup?.trim() || null,
+            notes: notes?.trim() || null,
+            cardVersion: 1,
+            isActive: true,
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === "P2002" && attempts < 4) {
+          attempts++;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!member) {
+      throw new Error("Failed to assign a unique member code after multiple attempts.");
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -170,6 +188,7 @@ export async function POST(request: Request) {
         action: "MEMBER_REGISTERED",
         entityType: "Member",
         entityId: member.id,
+        ipAddress: getClientIp(request),
         detailsJson: JSON.stringify({
           memberCode: member.memberCode,
           fullName: member.fullName,
@@ -179,10 +198,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, member });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Member create error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to register member" },
+      { error: error?.message || "Failed to register member." },
       { status: 500 }
     );
   }

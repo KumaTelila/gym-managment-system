@@ -28,10 +28,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "No file provided" }, { status: 400 });
       }
 
-      // Validate MIME type
-      if (!file.type.startsWith("image/")) {
+      // Validate MIME type (F-09: Ban SVG to prevent stored XSS)
+      const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+      if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
         return NextResponse.json(
-          { error: "Invalid file type. Only images (PNG, JPG, WEBP, SVG, GIF) are allowed." },
+          { error: "SVG images are not permitted for security reasons. Please upload JPG, PNG, or WEBP." },
+          { status: 400 }
+        );
+      }
+
+      if (!allowedMimes.includes(file.type) && !file.type.startsWith("image/")) {
+        return NextResponse.json(
+          { error: "Invalid file type. Only raster images (PNG, JPG, WEBP) are allowed." },
           { status: 400 }
         );
       }
@@ -49,21 +57,19 @@ export async function POST(request: Request) {
 
       // Determine extension and proper MIME
       let ext = "png";
-      let mimeType = file.type || "image/png";
+      let mimeType = "image/png";
       if (file.type.includes("jpeg") || file.type.includes("jpg")) {
         ext = "jpg";
         mimeType = "image/jpeg";
       } else if (file.type.includes("webp")) {
         ext = "webp";
         mimeType = "image/webp";
-      } else if (file.type.includes("svg")) {
-        ext = "svg";
-        mimeType = "image/svg+xml";
-      } else if (file.type.includes("gif")) {
-        ext = "gif";
-        mimeType = "image/gif";
-      } else if (file.name.includes(".")) {
-        ext = file.name.split(".").pop() || "png";
+      } else if (file.name.toLowerCase().endsWith(".jpg") || file.name.toLowerCase().endsWith(".jpeg")) {
+        ext = "jpg";
+        mimeType = "image/jpeg";
+      } else if (file.name.toLowerCase().endsWith(".webp")) {
+        ext = "webp";
+        mimeType = "image/webp";
       }
 
       // If running on Vercel / serverless: return a Base64 Data URL.
@@ -113,7 +119,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid base64 image data" }, { status: 400 });
     }
 
-    const mimeSubtype = matches[1];
+    const mimeSubtype = matches[1].toLowerCase();
+    if (mimeSubtype.includes("svg")) {
+      return NextResponse.json(
+        { error: "SVG images are not permitted for security reasons. Please upload JPG, PNG, or WEBP." },
+        { status: 400 }
+      );
+    }
+
     const mimeType = `image/${mimeSubtype}`;
     const ext = mimeSubtype === "jpeg" ? "jpg" : mimeSubtype;
     const buffer = Buffer.from(matches[2], "base64");
