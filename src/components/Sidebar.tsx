@@ -288,16 +288,16 @@ export function Sidebar({
         })}
       </div>
 
-      {/* Sidebar Footer: NavUser Component (dashboard-01 style) */}
+      {/* Sidebar Footer: NavUser Component */}
       {user && (
         <div className="mt-auto border-t border-slate-100 pt-2 px-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left text-xs hover:bg-slate-100 transition-colors focus:outline-none"
+                className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left text-xs hover:bg-slate-100 transition-all focus:outline-none cursor-pointer border border-transparent hover:border-slate-200"
               >
-                <Avatar className="h-8 w-8 rounded-lg border border-slate-200">
+                <Avatar className="h-8 w-8 rounded-lg border border-slate-200 shrink-0">
                   <AvatarFallback className="rounded-lg bg-slate-100 text-[11px] font-bold text-slate-700">
                     {getInitials(user.fullName)}
                   </AvatarFallback>
@@ -310,27 +310,27 @@ export function Sidebar({
                     {user.role.replace("_", " ")}
                   </span>
                 </div>
-                <MoreVertical className="h-4 w-4 text-slate-400 shrink-0" />
+                <MoreVertical className="h-4 w-4 text-slate-400 shrink-0 hover:text-slate-600" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="w-56 rounded-lg p-1.5 shadow-lg border-slate-200 bg-white"
-              side={isMobile ? "top" : "right"}
-              align="end"
-              sideOffset={8}
+              className="w-56 rounded-lg p-1.5 shadow-xl border-slate-200 bg-white"
+              side="top"
+              align="start"
+              sideOffset={10}
             >
               <DropdownMenuLabel className="p-1 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1">
+                <div className="flex items-center gap-2.5 px-1 py-1">
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-[#1e3a8a] text-white font-bold text-xs">
                       {getInitials(user.fullName)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="grid leading-tight">
-                    <span className="font-semibold text-xs text-slate-900">
+                  <div className="grid leading-tight min-w-0">
+                    <span className="font-semibold text-xs text-slate-900 truncate">
                       {user.fullName}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-400 truncate">
                       @{user.username} &bull; {user.role.replace("_", " ")}
                     </span>
                   </div>
@@ -339,7 +339,7 @@ export function Sidebar({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => router.push("/dashboard/settings")}
-                className="gap-2 text-xs text-slate-700 cursor-pointer"
+                className="gap-2 text-xs text-slate-700 cursor-pointer rounded-md"
               >
                 <User className="h-3.5 w-3.5 text-slate-500" />
                 <span>Account Profile</span>
@@ -347,7 +347,7 @@ export function Sidebar({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
-                className="gap-2 text-xs text-red-600 focus:text-red-700 cursor-pointer font-medium"
+                className="gap-2 text-xs text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer font-medium rounded-md"
               >
                 <LogOut className="h-3.5 w-3.5 text-red-500" />
                 <span>Sign Out</span>
