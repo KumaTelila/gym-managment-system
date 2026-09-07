@@ -196,7 +196,7 @@ export function Sidebar({
         "flex flex-col bg-white border-r border-slate-200/90 text-slate-800 select-none",
         isMobile
           ? "w-full h-full p-3"
-          : "w-60 shrink-0 min-h-[calc(100vh-3.5rem)] p-3"
+          : "w-60 shrink-0 h-full p-3"
       )}
     >
       {/* Brand Header (dashboard-01 style) */}

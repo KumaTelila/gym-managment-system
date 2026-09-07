@@ -2,19 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, User as UserIcon, Loader2, ChevronDown } from "lucide-react";
+import { Menu, X, LogOut, Loader2 } from "lucide-react";
 import { SessionUser } from "@/lib/session";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
   user?: SessionUser | null;
@@ -119,75 +110,8 @@ export function Header({ user, mobileMenuOpen, onToggleMobileMenu }: HeaderProps
         </div>
       </div>
 
-      {/* Right: User Profile & Shadcn Logout Action */}
+      {/* Right: Shadcn Logout Action */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        {user && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 hover:bg-slate-100/80 hover:border-slate-300 pl-1 pr-2.5 py-1 text-xs transition-all focus:outline-none cursor-pointer"
-              >
-                <Avatar className="h-6 w-6 rounded-full border border-slate-200 shadow-2xs">
-                  <AvatarFallback className="rounded-full bg-[#1e3a8a] text-white text-[10px] font-bold">
-                    {getInitials(user.fullName)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="hidden md:flex flex-col items-start leading-none text-left">
-                  <span className="text-[11px] font-semibold text-slate-800 max-w-[130px] truncate">
-                    {user.fullName}
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-medium tracking-tight uppercase">
-                    {user.role.replace("_", " ")}
-                  </span>
-                </div>
-                <ChevronDown className="h-3 w-3 text-slate-400 ml-0.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 mt-1.5 shadow-xl bg-white border-slate-200 rounded-lg p-1">
-              <DropdownMenuLabel className="p-2 font-normal">
-                <div className="flex items-center gap-2.5">
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg bg-[#1e3a8a] text-white text-xs font-bold">
-                      {getInitials(user.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid leading-tight min-w-0">
-                    <span className="font-semibold text-xs text-slate-900 truncate">
-                      {user.fullName}
-                    </span>
-                    <span className="text-[10px] text-slate-400 truncate">
-                      @{user.username} &bull; {user.role.replace("_", " ")}
-                    </span>
-                  </div>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => router.push("/dashboard/settings")}
-                className="gap-2 text-xs text-slate-700 cursor-pointer rounded-md"
-              >
-                <UserIcon className="h-3.5 w-3.5 text-slate-500" />
-                <span>Account Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="gap-2 text-xs text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer font-medium rounded-md"
-              >
-                {isLoggingOut ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
-                ) : (
-                  <LogOut className="h-3.5 w-3.5 text-red-500" />
-                )}
-                <span>Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* Dedicated High-Affordance Logout Button */}
         <Button
           variant="outline"
           size="sm"

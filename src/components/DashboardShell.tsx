@@ -14,16 +14,16 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col">
+    <div className="h-screen bg-[#f8fafc] text-slate-900 flex flex-col overflow-hidden">
       <Header
         user={user}
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
       />
 
-      <div className="flex flex-1 relative">
-        {/* Desktop Sidebar (hidden on mobile/tablet, visible on lg screens) */}
-        <div className="hidden lg:block shrink-0">
+      <div className="flex flex-1 overflow-hidden relative min-h-0">
+        {/* Desktop Sidebar (fixed, non-scrolling with inner content) */}
+        <div className="hidden lg:flex shrink-0 h-full overflow-hidden">
           <Sidebar user={user} role={user.role} />
         </div>
 
@@ -57,8 +57,8 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
           </div>
         )}
 
-        {/* Main Content Area: Responsive padding and min-w-0 for tables */}
-        <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto max-w-7xl mx-auto w-full min-w-0">
+        {/* Main Content Area: Independently scrollable inner content */}
+        <main className="flex-1 h-full overflow-y-auto p-3 sm:p-5 lg:p-6 max-w-7xl mx-auto w-full min-w-0">
           {children}
         </main>
       </div>
