@@ -180,7 +180,17 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "desc" },
       });
 
+      const rentAuditLogs = await prisma.auditLog.findMany({
+        where: {
+          entityType: "LockerRental",
+          action: "LOCKER_RENTAL_REFUNDED",
+        },
+        select: { entityId: true },
+      });
+      const refundedRentalIds = new Set(rentAuditLogs.map((l) => l.entityId));
+
       for (const rent of rentals) {
+        const isRentalRefunded = refundedRentalIds.has(rent.id);
         transactions.push({
           id: `RENT-${rent.id}`,
           timestamp: rent.createdAt.toISOString(),
@@ -193,7 +203,7 @@ export async function GET(request: Request) {
           paymentMethod: rent.paymentMethod,
           paymentRef: rent.paymentRef,
           staffName: "Front Desk",
-          status: rent.isActive ? "ACTIVE" : "COMPLETED",
+          status: isRentalRefunded ? "REFUNDED" : rent.isActive ? "ACTIVE" : "COMPLETED",
         });
       }
     }
@@ -217,7 +227,7 @@ export async function GET(request: Request) {
         })
       : transactions;
 
-    // Calculate Summary Totals
+    // Calculate Summary Totals & Reconciled Channel Matrix
     let totalGrossETB = 0;
     let totalRefundsETB = 0;
     let refundsCount = 0;
@@ -228,11 +238,14 @@ export async function GET(request: Request) {
     let rentalsTotalETB = 0;
     let rentalsCount = 0;
 
-    const channelSummary: Record<string, { count: number; totalETB: number }> = {
-      CASH: { count: 0, totalETB: 0 },
-      TELEBIRR: { count: 0, totalETB: 0 },
-      CBE_TRANSFER: { count: 0, totalETB: 0 },
-      OTHER: { count: 0, totalETB: 0 },
+    const channelSummary: Record<
+      string,
+      { count: number; grossETB: number; refundsETB: number; netETB: number; totalETB: number }
+    > = {
+      CASH: { count: 0, grossETB: 0, refundsETB: 0, netETB: 0, totalETB: 0 },
+      TELEBIRR: { count: 0, grossETB: 0, refundsETB: 0, netETB: 0, totalETB: 0 },
+      CBE_TRANSFER: { count: 0, grossETB: 0, refundsETB: 0, netETB: 0, totalETB: 0 },
+      OTHER: { count: 0, grossETB: 0, refundsETB: 0, netETB: 0, totalETB: 0 },
     };
 
     for (const t of filteredTransactions) {
@@ -241,9 +254,14 @@ export async function GET(request: Request) {
         t.status === "CANCELLED" ||
         t.status === "VOIDED";
 
+      const methodKey = t.paymentMethod in channelSummary ? t.paymentMethod : "OTHER";
+
       if (isRefunded) {
         totalRefundsETB += t.amountETB;
         refundsCount += 1;
+        channelSummary[methodKey].refundsETB += t.amountETB;
+        channelSummary[methodKey].netETB -= t.amountETB;
+        channelSummary[methodKey].totalETB -= t.amountETB;
       } else {
         totalGrossETB += t.amountETB;
 
@@ -258,11 +276,14 @@ export async function GET(request: Request) {
           rentalsCount += 1;
         }
 
-        const methodKey = t.paymentMethod in channelSummary ? t.paymentMethod : "OTHER";
         channelSummary[methodKey].count += 1;
+        channelSummary[methodKey].grossETB += t.amountETB;
+        channelSummary[methodKey].netETB += t.amountETB;
         channelSummary[methodKey].totalETB += t.amountETB;
       }
     }
+
+    const netRevenueETB = totalGrossETB - totalRefundsETB;
 
     return NextResponse.json({
       timeframe,
@@ -273,6 +294,7 @@ export async function GET(request: Request) {
       summary: {
         totalGrossETB,
         totalRefundsETB,
+        netRevenueETB,
         refundsCount,
         totalTransactionsCount: filteredTransactions.length,
         posSalesTotalETB,

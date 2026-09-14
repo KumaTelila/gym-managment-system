@@ -14,7 +14,8 @@ export async function POST(
     }
     const session = auth.user;
 
-    const { id } = await params;
+    const rawId = (await params).id;
+    const id = rawId.replace(/^SUB-/, "");
     const body = await request.json().catch(() => ({}));
     const reason = body?.reason?.trim() || "Accidentally registered / Admin rollback";
 

@@ -16,6 +16,10 @@ export async function GET() {
             "facility_phone",
             "facility_email",
             "registration_fee",
+            "dedicated_locker_fee",
+            "day_pass_fee",
+            "card_replacement_fee",
+            "currency_code",
           ],
         },
       },
@@ -29,6 +33,10 @@ export async function GET() {
       facility_phone: "+251 91 100 2233",
       facility_email: "desk@blowfitness.et",
       registration_fee: "100",
+      dedicated_locker_fee: "500",
+      day_pass_fee: "200",
+      card_replacement_fee: "100",
+      currency_code: "ETB",
     };
 
     for (const s of branding) {

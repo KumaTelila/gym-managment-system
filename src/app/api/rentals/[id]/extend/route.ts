@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { getSettingValue } from "@/lib/settings";
 
 export async function POST(
   request: Request,
@@ -16,7 +17,14 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { addDays = 30, paymentMethod = "CASH", paymentRef, priceETB } = body;
+    const {
+      addDays = 30,
+      paymentMethod = "CASH",
+      paymentRef,
+      priceETB,
+      isManualOverride,
+      overrideReason,
+    } = body;
 
     const rental = await prisma.lockerRental.findUnique({
       where: { id },
@@ -28,16 +36,27 @@ export async function POST(
     }
 
     const days = Math.max(1, parseInt(String(addDays), 10) || 30);
-    // F-02: Authoritative rate computation (500 ETB per 30-day block, nearest 50)
-    const authoritativeFeeETB = Math.max(100, Math.round((days / 30) * 500 / 50) * 50);
+    // Configurable authoritative rate computation from system settings
+    const lockerFeeStr = await getSettingValue("dedicated_locker_fee", "500");
+    const monthlyLockerFee = Math.max(0, parseFloat(lockerFeeStr) || 500);
+    const authoritativeFeeETB = Math.round((days / 30) * monthlyLockerFee);
 
-    if (priceETB !== undefined && Number(priceETB) !== authoritativeFeeETB) {
-      return NextResponse.json(
-        {
-          error: `Price mismatch: extension fee for ${days} days is ${authoritativeFeeETB} ETB. Client-submitted price (${priceETB} ETB) is not permitted without explicit override.`,
-        },
-        { status: 400 }
-      );
+    let finalFeeETB = authoritativeFeeETB;
+    const isOverride = priceETB !== undefined && Number(priceETB) !== authoritativeFeeETB;
+
+    if (isOverride) {
+      if (session.role === "ADMIN" || isManualOverride) {
+        finalFeeETB = Math.max(0, Number(priceETB));
+      } else {
+        return NextResponse.json(
+          {
+            error: `Price mismatch: extension fee for ${days} days is ${authoritativeFeeETB} ETB (based on ${monthlyLockerFee} ETB/month). Client-submitted price (${priceETB} ETB) is not permitted without explicit override.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else if (priceETB !== undefined) {
+      finalFeeETB = Number(priceETB);
     }
 
     // Base date: if already expired, start from today; else add to current endDate
@@ -71,7 +90,7 @@ export async function POST(
         data: {
           orderNumber,
           memberId: rental.memberId,
-          totalAmountETB: authoritativeFeeETB,
+          totalAmountETB: finalFeeETB,
           paymentMethod,
           paymentRef: paymentRef?.trim() || null,
           cashierId: session.id,
@@ -94,7 +113,11 @@ export async function POST(
         previousDeadline: rental.endDate.toISOString(),
         newDeadline: newEndDate.toISOString(),
         addDays: days,
-        feeETB: authoritativeFeeETB,
+        feeETB: finalFeeETB,
+        standardFeeETB: authoritativeFeeETB,
+        monthlyConfiguredFee: monthlyLockerFee,
+        isPriceOverride: isOverride,
+        overrideReason: isOverride ? (overrideReason || "Manager / Admin Override") : null,
         orderNumber: result.order.orderNumber,
         paymentMethod,
         paymentRef: paymentRef || null,

@@ -14,7 +14,8 @@ export async function POST(
     }
     const session = auth.user;
 
-    const { id } = await params;
+    const rawId = (await params).id;
+    const id = rawId.replace(/^RENT-/, "");
     const body = await request.json().catch(() => ({}));
     const reason = body?.reason?.trim() || "Accidental rental / Admin rollback";
 

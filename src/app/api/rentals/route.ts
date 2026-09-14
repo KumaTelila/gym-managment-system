@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireRole } from "@/lib/session";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { getSettingValue } from "@/lib/settings";
 
 export async function GET() {
   try {
@@ -23,7 +24,10 @@ export async function GET() {
       orderBy: { lockerNumber: "asc" },
     });
 
-    return NextResponse.json({ rentals, availableLockers });
+    const lockerFeeStr = await getSettingValue("dedicated_locker_fee", "500");
+    const monthlyRentalFee = Math.max(0, parseFloat(lockerFeeStr) || 500);
+
+    return NextResponse.json({ rentals, availableLockers, monthlyRentalFee });
   } catch (error) {
     console.error("Rentals error:", error);
     return NextResponse.json(
@@ -41,8 +45,16 @@ export async function POST(request: Request) {
     }
     const session = auth.user;
 
-    const { memberId, lockerId, durationDays = 30, paymentMethod, paymentRef, priceETB } =
-      await request.json();
+    const {
+      memberId,
+      lockerId,
+      durationDays = 30,
+      paymentMethod,
+      paymentRef,
+      priceETB,
+      isManualOverride,
+      overrideReason,
+    } = await request.json();
 
     if (!memberId || !lockerId) {
       return NextResponse.json({ error: "Member and locker are required." }, { status: 400 });
@@ -50,16 +62,27 @@ export async function POST(request: Request) {
 
     const duration = Math.max(1, parseInt(String(durationDays), 10) || 30);
 
-    // F-02: Authoritative server-side pricing (500 ETB per 30-day block, rounded to nearest 50 ETB)
-    const authoritativePriceETB = Math.max(100, Math.round((duration / 30) * 500 / 50) * 50);
+    // Configurable authoritative rate computation from system settings
+    const lockerFeeStr = await getSettingValue("dedicated_locker_fee", "500");
+    const monthlyLockerFee = Math.max(0, parseFloat(lockerFeeStr) || 500);
+    const authoritativePriceETB = Math.round((duration / 30) * monthlyLockerFee);
 
-    if (priceETB !== undefined && Number(priceETB) !== authoritativePriceETB) {
-      return NextResponse.json(
-        {
-          error: `Price mismatch: standard rental rate for ${duration} days is ${authoritativePriceETB} ETB. Client-submitted price (${priceETB} ETB) is not permitted without manager override.`,
-        },
-        { status: 400 }
-      );
+    let finalPriceETB = authoritativePriceETB;
+    const isOverride = priceETB !== undefined && Number(priceETB) !== authoritativePriceETB;
+
+    if (isOverride) {
+      if (session.role === "ADMIN" || isManualOverride) {
+        finalPriceETB = Math.max(0, Number(priceETB));
+      } else {
+        return NextResponse.json(
+          {
+            error: `Price mismatch: standard rental rate for ${duration} days is ${authoritativePriceETB} ETB (based on ${monthlyLockerFee} ETB/month). Client-submitted price (${priceETB} ETB) is not permitted without manager override.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else if (priceETB !== undefined) {
+      finalPriceETB = Number(priceETB);
     }
 
     const startDate = new Date();
@@ -85,7 +108,7 @@ export async function POST(request: Request) {
           memberId,
           startDate,
           endDate,
-          priceETB: authoritativePriceETB,
+          priceETB: finalPriceETB,
           paymentMethod: paymentMethod || "CASH",
           paymentRef: paymentRef?.trim() || null,
           isActive: true,
@@ -110,7 +133,11 @@ export async function POST(request: Request) {
         memberName: rental.member.fullName,
         lockerNumber: rental.locker.lockerNumber,
         durationDays: duration,
-        priceETB: authoritativePriceETB,
+        priceETB: finalPriceETB,
+        standardPriceETB: authoritativePriceETB,
+        monthlyConfiguredFee: monthlyLockerFee,
+        isPriceOverride: isOverride,
+        overrideReason: isOverride ? (overrideReason || "Manager / Admin Override") : null,
         paymentMethod: paymentMethod || "CASH",
         paymentRef: paymentRef?.trim() || null,
       },

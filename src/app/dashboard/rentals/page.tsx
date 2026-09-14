@@ -58,8 +58,10 @@ export default function LockerRentalsPage() {
   const [memberCode, setMemberCode] = useState("");
   const [resolvedMember, setResolvedMember] = useState<{ id: string; fullName: string; memberCode: string } | null>(null);
   const [selectedLockerId, setSelectedLockerId] = useState("");
+  const [monthlyRentalFee, setMonthlyRentalFee] = useState(500);
   const [priceETB, setPriceETB] = useState(500);
   const [durationDays, setDurationDays] = useState(30);
+  const [isCustomPrice, setIsCustomPrice] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("TELEBIRR");
   const [paymentRef, setPaymentRef] = useState("");
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -90,6 +92,13 @@ export default function LockerRentalsPage() {
         const data = await res.json();
         setRentals(data.rentals || []);
         setAvailableLockers(data.availableLockers || []);
+        if (data.monthlyRentalFee !== undefined) {
+          const fee = Number(data.monthlyRentalFee) || 500;
+          setMonthlyRentalFee(fee);
+          if (!isCustomPrice) {
+            setPriceETB(Math.round((durationDays / 30) * fee));
+          }
+        }
         if (data.availableLockers?.length > 0 && !selectedLockerId) {
           setSelectedLockerId(data.availableLockers[0].id);
         }
@@ -102,6 +111,14 @@ export default function LockerRentalsPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleDurationChange = (days: number) => {
+    const validDays = Math.max(1, isNaN(days) ? 30 : days);
+    setDurationDays(validDays);
+    if (!isCustomPrice) {
+      setPriceETB(Math.round((validDays / 30) * monthlyRentalFee));
+    }
+  };
 
   const handleLookupMember = async (customCode?: string) => {
     const codeToLookup = (customCode !== undefined ? customCode : memberCode).trim();
@@ -118,6 +135,9 @@ export default function LockerRentalsPage() {
       setResolvedMember(null);
     }
   };
+
+  const standardCalculatedPrice = Math.round((durationDays / 30) * monthlyRentalFee);
+  const hasPriceOverride = priceETB !== standardCalculatedPrice;
 
   const handleCreateRental = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +160,7 @@ export default function LockerRentalsPage() {
       extraDetails: {
         "Rental Duration": `${durationDays} Days`,
         "Locker": `#${locker?.lockerNumber}`,
+        ...(hasPriceOverride ? { "Price Override": `Manual (${priceETB} ETB vs standard ${standardCalculatedPrice} ETB)` } : {}),
       },
     });
     setIsConfirmOpen(true);
@@ -158,6 +179,8 @@ export default function LockerRentalsPage() {
           lockerId: selectedLockerId,
           durationDays,
           priceETB,
+          isManualOverride: hasPriceOverride,
+          overrideReason: hasPriceOverride ? "Manager Price Adjustment" : undefined,
           paymentMethod,
           paymentRef: paymentRef.trim() || undefined,
         }),
@@ -172,6 +195,7 @@ export default function LockerRentalsPage() {
       setMemberCode("");
       setResolvedMember(null);
       setPaymentRef("");
+      setIsCustomPrice(false);
       loadData();
     } catch (err: unknown) {
       toast.error("Rental Error", err instanceof Error ? err.message : "Error creating rental");
@@ -353,7 +377,8 @@ export default function LockerRentalsPage() {
           <DialogHeader>
             <DialogTitle>Assign Dedicated Monthly Locker</DialogTitle>
             <DialogDescription>
-              Reserves a locker for exclusive long-term use by a member.
+              Reserves a locker for exclusive long-term use. Standard rate:{" "}
+              <span className="font-semibold text-slate-800">{monthlyRentalFee} ETB</span> per 30 days.
             </DialogDescription>
           </DialogHeader>
 
@@ -414,25 +439,73 @@ export default function LockerRentalsPage() {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Duration (Days)</label>
-                <Input
-                  type="number"
-                  value={durationDays}
-                  onChange={(e) => setDurationDays(parseInt(e.target.value, 10))}
-                  className="h-8 text-xs bg-slate-50"
-                />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-medium text-slate-700">Duration & Rental Fee (ETB)</label>
+                <div className="flex gap-1">
+                  {[
+                    { label: "30d", days: 30 },
+                    { label: "60d", days: 60 },
+                    { label: "90d", days: 90 },
+                    { label: "1 Yr", days: 365 },
+                  ].map((p) => (
+                    <button
+                      key={p.days}
+                      type="button"
+                      onClick={() => handleDurationChange(p.days)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
+                        durationDays === p.days
+                          ? "bg-[#1e3a8a] text-white border-[#1e3a8a]"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Rental Fee (ETB)</label>
-                <Input
-                  type="number"
-                  value={priceETB}
-                  onChange={(e) => setPriceETB(parseFloat(e.target.value))}
-                  className="h-8 text-xs bg-slate-50"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={durationDays}
+                    onChange={(e) => handleDurationChange(parseInt(e.target.value, 10))}
+                    placeholder="Duration Days"
+                    className="h-8 text-xs bg-slate-50"
+                  />
+                </div>
+                <div>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={priceETB}
+                    onChange={(e) => {
+                      setIsCustomPrice(true);
+                      setPriceETB(parseFloat(e.target.value) || 0);
+                    }}
+                    placeholder="Fee in ETB"
+                    className={`h-8 text-xs bg-slate-50 ${
+                      hasPriceOverride ? "border-amber-400 focus:border-amber-500 bg-amber-50/40" : ""
+                    }`}
+                  />
+                </div>
               </div>
+              {hasPriceOverride && (
+                <div className="mt-1 flex items-center justify-between text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200">
+                  <span>Custom price: Standard is {standardCalculatedPrice} ETB</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomPrice(false);
+                      setPriceETB(standardCalculatedPrice);
+                    }}
+                    className="underline text-[10px] font-semibold hover:text-amber-900"
+                  >
+                    Reset standard
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2">

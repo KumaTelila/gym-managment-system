@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, requireRole } from "@/lib/session";
 import { logAudit, getClientIp } from "@/lib/audit";
+import { getSettingValue } from "@/lib/settings";
 
 export async function GET(request: Request) {
   try {
@@ -28,12 +29,11 @@ export async function GET(request: Request) {
         processedBy: true,
       },
       orderBy: { createdAt: "desc" },
-      take: 50,
     });
 
     return NextResponse.json({ plans, subscriptions });
   } catch (error) {
-    console.error("Subscription error:", error);
+    console.error("Subscriptions error:", error);
     return NextResponse.json(
       { error: "Error fetching subscriptions." },
       { status: 500 }
@@ -49,17 +49,20 @@ export async function POST(request: Request) {
     }
     const session = auth.user;
 
+    const body = await request.json();
     const {
       memberId,
       planId,
-      paymentMethod,
-      paymentRef,
       amountPaidETB,
-      startDate: customStartDate,
+      paymentMethod = "TELEBIRR",
+      paymentRef,
+      customStartDate,
       includeRegistrationFee,
       isSponsored,
       sponsorReason,
-    } = await request.json();
+      isManualOverride,
+      overrideReason,
+    } = body;
 
     if (!memberId || !planId) {
       return NextResponse.json(
@@ -68,13 +71,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isSponsored && !paymentMethod) {
-      return NextResponse.json(
-        { error: "Payment method is required for non-sponsored memberships." },
-        { status: 400 }
-      );
-    }
-
+    // F-03: Validate sponsored membership requirements
     if (isSponsored && (!sponsorReason || !sponsorReason.trim())) {
       return NextResponse.json(
         { error: "A valid sponsorship or giveaway reason is required when waiving fees." },
@@ -93,22 +90,28 @@ export async function POST(request: Request) {
     // Determine registration fee if applicable
     let finalRegFee = 0;
     if (!isSponsored && includeRegistrationFee) {
-      const regSetting = await prisma.systemSetting.findUnique({
-        where: { key: "registration_fee" },
-      });
-      finalRegFee = regSetting ? parseFloat(regSetting.value) || 100 : 100;
+      const regFeeStr = await getSettingValue("registration_fee", "100");
+      finalRegFee = Math.max(0, parseFloat(regFeeStr) || 100);
     }
 
     // Authoritative pricing: 0 for sponsored, otherwise plan rate + optional registration fee
     const expectedPriceETB = isSponsored ? 0 : Number(plan.priceETB) + finalRegFee;
+    let finalPaidETB = expectedPriceETB;
+    const isOverride = amountPaidETB !== undefined && Number(amountPaidETB) !== expectedPriceETB;
 
-    if (amountPaidETB !== undefined && Number(amountPaidETB) !== expectedPriceETB) {
-      return NextResponse.json(
-        {
-          error: `Price mismatch: calculated fee is ${expectedPriceETB} ETB. Client-submitted price (${amountPaidETB} ETB) is not permitted without explicit authorization.`,
-        },
-        { status: 400 }
-      );
+    if (isOverride) {
+      if (session.role === "ADMIN" || isManualOverride) {
+        finalPaidETB = Math.max(0, Number(amountPaidETB));
+      } else {
+        return NextResponse.json(
+          {
+            error: `Price mismatch: calculated fee is ${expectedPriceETB} ETB (Plan: ${plan.priceETB} ETB + Reg Fee: ${finalRegFee} ETB). Client-submitted price (${amountPaidETB} ETB) is not permitted without explicit authorization.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else if (amountPaidETB !== undefined) {
+      finalPaidETB = Number(amountPaidETB);
     }
 
     // Check existing active subscription to extend if needed, or use custom start date
@@ -139,7 +142,7 @@ export async function POST(request: Request) {
         startDate,
         endDate,
         status: "ACTIVE",
-        amountPaidETB: expectedPriceETB,
+        amountPaidETB: finalPaidETB,
         registrationFeeETB: finalRegFee,
         isSponsored: Boolean(isSponsored),
         sponsorReason: isSponsored ? sponsorReason.trim() : null,
@@ -158,7 +161,7 @@ export async function POST(request: Request) {
     // Write audit log with client IP
     await logAudit({
       userId: session.id,
-      action: isSponsored ? "SUBSCRIPTION_SPONSORED_ISSUED" : "SUBSCRIPTION_ACTIVATED",
+      action: "SUBSCRIPTION_ISSUED",
       entityType: "Subscription",
       entityId: subscription.id,
       details: {
@@ -166,8 +169,11 @@ export async function POST(request: Request) {
         memberName: subscription.member.fullName,
         planName: plan.name,
         durationDays: plan.durationDays,
-        priceETB: expectedPriceETB,
+        amountPaidETB: finalPaidETB,
+        expectedPriceETB,
         registrationFeeETB: finalRegFee,
+        isPriceOverride: isOverride,
+        overrideReason: isOverride ? (overrideReason || "Manager / Admin Override") : null,
         isSponsored: Boolean(isSponsored),
         sponsorReason: isSponsored ? sponsorReason.trim() : null,
         startDate: startDate.toISOString(),

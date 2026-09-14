@@ -60,8 +60,10 @@ export default function LockersPage() {
     fullName: string;
     memberCode: string;
   } | null>(null);
+  const [monthlyRentalFee, setMonthlyRentalFee] = useState(500);
   const [rentDurationDays, setRentDurationDays] = useState(30);
   const [rentPriceETB, setRentPriceETB] = useState(500);
+  const [isCustomRentPrice, setIsCustomRentPrice] = useState(false);
   const [rentPaymentMethod, setRentPaymentMethod] = useState<"CASH" | "TELEBIRR" | "CBE_TRANSFER">("TELEBIRR");
   const [rentPaymentRef, setRentPaymentRef] = useState("");
   const [rentSubmitting, setRentSubmitting] = useState(false);
@@ -71,11 +73,38 @@ export default function LockersPage() {
   const [isConfirmRentOpen, setIsConfirmRentOpen] = useState(false);
   const [pendingRentConfirmation, setPendingRentConfirmation] = useState<PaymentConfirmationDetails | null>(null);
 
+  useEffect(() => {
+    fetch("/api/settings/public")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.config?.dedicated_locker_fee) {
+          const fee = parseFloat(data.config.dedicated_locker_fee) || 500;
+          setMonthlyRentalFee(fee);
+          setRentPriceETB(fee);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleRentDurationChange = (days: number) => {
+    const validDays = Math.max(1, isNaN(days) ? 30 : days);
+    setRentDurationDays(validDays);
+    if (!isCustomRentPrice) {
+      setRentPriceETB(Math.round((validDays / 30) * monthlyRentalFee));
+    }
+  };
+
+  const standardRentPrice = Math.round((rentDurationDays / 30) * monthlyRentalFee);
+  const hasRentPriceOverride = rentPriceETB !== standardRentPrice;
+
   const handleOpenRentModal = (locker: LockerData) => {
     setRentLocker(locker);
     setRentResolvedMember(null);
     setRentMemberCode("");
     setRentLookupError(null);
+    setRentDurationDays(30);
+    setRentPriceETB(monthlyRentalFee);
+    setIsCustomRentPrice(false);
     setIsRentModalOpen(true);
   };
 
@@ -116,6 +145,7 @@ export default function LockersPage() {
       extraDetails: {
         "Rental Duration": `${rentDurationDays} Days`,
         "Locker Section": `${rentLocker.section} Locker Room`,
+        ...(hasRentPriceOverride ? { "Price Override": `Manual (${rentPriceETB} ETB vs standard ${standardRentPrice} ETB)` } : {}),
       },
     });
     setIsConfirmRentOpen(true);
@@ -134,6 +164,8 @@ export default function LockersPage() {
           lockerId: rentLocker.id,
           durationDays: rentDurationDays,
           priceETB: rentPriceETB,
+          isManualOverride: hasRentPriceOverride,
+          overrideReason: hasRentPriceOverride ? "Manager Price Adjustment" : undefined,
           paymentMethod: rentPaymentMethod,
           paymentRef: rentPaymentRef?.trim() || null,
         }),
@@ -152,6 +184,7 @@ export default function LockersPage() {
       setRentLocker(null);
       setRentResolvedMember(null);
       setRentMemberCode("");
+      setIsCustomRentPrice(false);
       loadLockers();
     } catch (err: unknown) {
       toast.error("Rental Error", err instanceof Error ? err.message : "Failed to rent locker");
@@ -426,7 +459,8 @@ export default function LockersPage() {
               <span>Rent Dedicated Locker</span>
             </DialogTitle>
             <DialogDescription>
-              Assign a dedicated monthly locker to a member. The locker status will become Reserved.
+              Assign a dedicated monthly locker to a member. Standard rate:{" "}
+              <span className="font-semibold text-slate-800">{monthlyRentalFee} ETB</span> / 30 days.
             </DialogDescription>
           </DialogHeader>
 
@@ -499,7 +533,7 @@ export default function LockersPage() {
                     <button
                       key={opt.days}
                       type="button"
-                      onClick={() => setRentDurationDays(opt.days)}
+                      onClick={() => handleRentDurationChange(opt.days)}
                       className={`py-1.5 text-xs font-medium rounded border transition-colors ${
                         rentDurationDays === opt.days
                           ? "bg-[#1e3a8a] text-white border-[#1e3a8a] font-bold"
@@ -514,7 +548,7 @@ export default function LockersPage() {
                   type="number"
                   min="1"
                   value={rentDurationDays}
-                  onChange={(e) => setRentDurationDays(Number(e.target.value))}
+                  onChange={(e) => handleRentDurationChange(Number(e.target.value))}
                   className="h-8 text-xs font-mono mt-1"
                   placeholder="Custom days"
                 />
@@ -522,18 +556,44 @@ export default function LockersPage() {
 
               {/* Fee (ETB) */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">
-                  Rental Fee (ETB)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Rental Fee (ETB)
+                  </label>
+                  {hasRentPriceOverride && (
+                    <span className="text-[10px] text-amber-600 font-medium">
+                      Standard: {standardRentPrice} ETB
+                    </span>
+                  )}
+                </div>
                 <Input
                   type="number"
                   min="0"
-                  step="50"
                   value={rentPriceETB}
-                  onChange={(e) => setRentPriceETB(Number(e.target.value))}
-                  className="h-8 text-xs font-mono"
+                  onChange={(e) => {
+                    setIsCustomRentPrice(true);
+                    setRentPriceETB(Number(e.target.value));
+                  }}
+                  className={`h-8 text-xs font-mono ${
+                    hasRentPriceOverride ? "border-amber-400 bg-amber-50/40" : ""
+                  }`}
                   placeholder="e.g. 500"
                 />
+                {hasRentPriceOverride && (
+                  <div className="flex items-center justify-between text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200">
+                    <span>Manual price override</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomRentPrice(false);
+                        setRentPriceETB(standardRentPrice);
+                      }}
+                      className="underline text-[10px] font-semibold hover:text-amber-900"
+                    >
+                      Reset standard ({standardRentPrice} ETB)
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Payment Method */}

@@ -67,23 +67,33 @@ interface SalesReportResponse {
   dateRange: { start: string | null; end: string | null };
   summary: {
     totalGrossETB: number;
+    totalRefundsETB: number;
+    netRevenueETB: number;
     totalTransactionsCount: number;
-    totalRefundsETB?: number;
-    refundsCount?: number;
+    refundsCount: number;
     posSalesTotalETB: number;
     posSalesCount: number;
     subscriptionsTotalETB: number;
     subscriptionsCount: number;
     rentalsTotalETB: number;
     rentalsCount: number;
-    channelSummary: Record<string, { count: number; totalETB: number }>;
+    channelSummary: Record<
+      string,
+      { count: number; grossETB?: number; refundsETB?: number; netETB?: number; totalETB: number }
+    >;
   };
   transactions: UnifiedTransaction[];
 }
 
 interface ShiftReconciliationData {
-  breakdown: Record<string, { count: number; totalETB: number }>;
+  breakdown: Record<
+    string,
+    { count: number; grossETB?: number; refundsETB?: number; netETB?: number; totalETB: number }
+  >;
   grandTotalETB: number;
+  totalGrossETB?: number;
+  totalRefundsETB?: number;
+  refundsCount?: number;
   ordersCount: number;
   subscriptionsCount: number;
   rentalsCount: number;
@@ -124,13 +134,14 @@ export default function ReportsPage() {
     if (!refundTarget) return;
     setRefundLoading(true);
     try {
+      const cleanId = refundTarget.id.replace(/^(POS|SUB|RENT)-/, "");
       let endpoint = "";
       if (refundTarget.stream === "POS") {
-        endpoint = `/api/pos/orders/${refundTarget.id}/refund`;
+        endpoint = `/api/pos/orders/${cleanId}/refund`;
       } else if (refundTarget.stream === "SUBSCRIPTION") {
-        endpoint = `/api/subscriptions/${refundTarget.id}/refund`;
+        endpoint = `/api/subscriptions/${cleanId}/refund`;
       } else if (refundTarget.stream === "RENTAL") {
-        endpoint = `/api/rentals/${refundTarget.id}/refund`;
+        endpoint = `/api/rentals/${cleanId}/refund`;
       }
 
       if (!endpoint) throw new Error("Unsupported transaction stream for refund");
@@ -257,7 +268,7 @@ export default function ReportsPage() {
   };
 
   // Cash drawer calculations for Tab 2
-  const expectedCash = shiftData?.breakdown?.CASH?.totalETB || 0;
+  const expectedCash = shiftData?.breakdown?.CASH?.netETB ?? shiftData?.breakdown?.CASH?.totalETB ?? 0;
   const actualCash = parseFloat(countedCash) || 0;
   const cashDifference = actualCash - expectedCash;
 
@@ -398,19 +409,35 @@ export default function ReportsPage() {
           </Card>
 
           {/* Revenue KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Grand Total */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* Reconciled Net Total */}
             <Card className="p-4 bg-[#1e3a8a] text-white border-transparent shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-blue-200">Total Gross Revenue</span>
+                <span className="text-xs font-medium text-blue-200">Reconciled Net Revenue</span>
                 <DollarSign className="h-4 w-4 text-white" />
               </div>
               <div className="mt-2 text-2xl font-black text-white">
-                {Number(salesData?.summary.totalGrossETB || 0).toLocaleString()}{" "}
+                {Number(salesData?.summary.netRevenueETB ?? salesData?.summary.totalGrossETB ?? 0).toLocaleString()}{" "}
                 <span className="text-xs font-normal text-blue-200">ETB</span>
               </div>
-              <div className="mt-1 text-[11px] text-blue-200 flex items-center gap-1">
-                <span>{salesData?.summary.totalTransactionsCount || 0} transactions in selected period</span>
+              <div className="mt-1 text-[11px] text-blue-200 flex items-center justify-between">
+                <span>Gross: {Number(salesData?.summary.totalGrossETB || 0).toLocaleString()} ETB</span>
+                <span>{salesData?.summary.totalTransactionsCount || 0} txns</span>
+              </div>
+            </Card>
+
+            {/* Total Refunds */}
+            <Card className="p-4 bg-white border-slate-200 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-rose-600">Total Refunds</span>
+                <Undo2 className="h-4 w-4 text-rose-500" />
+              </div>
+              <div className="mt-2 text-2xl font-black text-rose-600">
+                -{Number(salesData?.summary.totalRefundsETB || 0).toLocaleString()}{" "}
+                <span className="text-xs font-normal text-slate-400">ETB</span>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                {salesData?.summary.refundsCount || 0} reversed / refunded transactions
               </div>
             </Card>
 
@@ -469,10 +496,15 @@ export default function ReportsPage() {
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold text-slate-900">
-                  {Number(salesData?.summary.channelSummary?.TELEBIRR?.totalETB || 0).toLocaleString()} ETB
+                  {Number(salesData?.summary.channelSummary?.TELEBIRR?.netETB ?? salesData?.summary.channelSummary?.TELEBIRR?.totalETB ?? 0).toLocaleString()} ETB
                 </span>
                 <span className="text-[10px] text-slate-500 block">
-                  {salesData?.summary.channelSummary?.TELEBIRR?.count || 0} payments
+                  {salesData?.summary.channelSummary?.TELEBIRR?.count || 0} txns
+                  {Number(salesData?.summary.channelSummary?.TELEBIRR?.refundsETB || 0) > 0 && (
+                    <span className="text-rose-600 ml-1">
+                      (-{Number(salesData?.summary.channelSummary?.TELEBIRR?.refundsETB).toLocaleString()} ETB refunded)
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
@@ -484,10 +516,15 @@ export default function ReportsPage() {
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold text-slate-900">
-                  {Number(salesData?.summary.channelSummary?.CBE_TRANSFER?.totalETB || 0).toLocaleString()} ETB
+                  {Number(salesData?.summary.channelSummary?.CBE_TRANSFER?.netETB ?? salesData?.summary.channelSummary?.CBE_TRANSFER?.totalETB ?? 0).toLocaleString()} ETB
                 </span>
                 <span className="text-[10px] text-slate-500 block">
-                  {salesData?.summary.channelSummary?.CBE_TRANSFER?.count || 0} slips
+                  {salesData?.summary.channelSummary?.CBE_TRANSFER?.count || 0} txns
+                  {Number(salesData?.summary.channelSummary?.CBE_TRANSFER?.refundsETB || 0) > 0 && (
+                    <span className="text-rose-600 ml-1">
+                      (-{Number(salesData?.summary.channelSummary?.CBE_TRANSFER?.refundsETB).toLocaleString()} ETB refunded)
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
@@ -499,10 +536,15 @@ export default function ReportsPage() {
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold text-slate-900">
-                  {Number(salesData?.summary.channelSummary?.CASH?.totalETB || 0).toLocaleString()} ETB
+                  {Number(salesData?.summary.channelSummary?.CASH?.netETB ?? salesData?.summary.channelSummary?.CASH?.totalETB ?? 0).toLocaleString()} ETB
                 </span>
                 <span className="text-[10px] text-slate-500 block">
-                  {salesData?.summary.channelSummary?.CASH?.count || 0} cash receipts
+                  {salesData?.summary.channelSummary?.CASH?.count || 0} receipts
+                  {Number(salesData?.summary.channelSummary?.CASH?.refundsETB || 0) > 0 && (
+                    <span className="text-rose-600 ml-1">
+                      (-{Number(salesData?.summary.channelSummary?.CASH?.refundsETB).toLocaleString()} ETB refunded)
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
@@ -560,132 +602,135 @@ export default function ReportsPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      salesData.transactions.map((t) => (
-                        <TableRow key={t.id} className="hover:bg-slate-50/50">
-                          {/* Date & Time */}
-                          <TableCell className="text-xs whitespace-nowrap">
-                            <div className="font-medium text-slate-800">
-                              {formatDualDate(t.timestamp)}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              {new Date(t.timestamp).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                          </TableCell>
-
-                          {/* Stream */}
-                          <TableCell>
-                            {t.stream === "POS" ? (
-                              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                <ShoppingBag className="h-3 w-3" />
-                                POS Retail
-                              </span>
-                            ) : t.stream === "SUBSCRIPTION" ? (
-                              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CreditCard className="h-3 w-3" />
-                                Membership
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                                <KeyRound className="h-3 w-3" />
-                                Locker
-                              </span>
-                            )}
-                          </TableCell>
-
-                          {/* Reference Number */}
-                          <TableCell className="text-xs font-mono font-medium text-slate-700">
-                            {t.referenceNumber}
-                          </TableCell>
-
-                          {/* Customer */}
-                          <TableCell className="text-xs">
-                            <div className="font-semibold text-slate-900">{t.customerName}</div>
-                            {t.customerCode !== "WALK_IN" && (
-                              <div className="text-[10px] font-mono text-slate-400">
-                                {t.customerCode}
+                      salesData.transactions.map((t) => {
+                        const isRefund = t.status === "REFUNDED" || t.status === "CANCELLED" || t.status === "VOIDED";
+                        return (
+                          <TableRow key={t.id} className={`hover:bg-slate-50/50 ${isRefund ? "bg-rose-50/20" : ""}`}>
+                            {/* Date & Time */}
+                            <TableCell className="text-xs whitespace-nowrap">
+                              <div className="font-medium text-slate-800">
+                                {formatDualDate(t.timestamp)}
                               </div>
-                            )}
-                          </TableCell>
-
-                          {/* Description */}
-                          <TableCell className="text-xs text-slate-600 max-w-xs truncate" title={t.description}>
-                            {t.description}
-                          </TableCell>
-
-                          {/* Payment Channel & Ref */}
-                          <TableCell className="text-xs whitespace-nowrap">
-                            <div className="font-medium text-slate-800">
-                              {t.paymentMethod === "TELEBIRR" ? (
-                                <span className="text-blue-600 font-semibold">Telebirr</span>
-                              ) : t.paymentMethod === "CBE_TRANSFER" ? (
-                                <span className="text-purple-600 font-semibold">CBE Birr</span>
-                              ) : (
-                                <span className="text-emerald-600 font-semibold">Cash</span>
-                              )}
-                            </div>
-                            {t.paymentRef && (
-                              <div className="text-[10px] font-mono text-slate-400" title={`Ref: ${t.paymentRef}`}>
-                                Ref: {t.paymentRef}
+                              <div className="text-[10px] text-slate-400">
+                                {new Date(t.timestamp).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </div>
-                            )}
-                          </TableCell>
+                            </TableCell>
 
-                          {/* Status */}
-                          <TableCell className="text-xs">
-                            {t.status === "REFUNDED" ? (
-                              <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
-                                Refunded
-                              </Badge>
-                            ) : t.status === "CANCELLED" ? (
-                              <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
-                                Cancelled
-                              </Badge>
-                            ) : t.status === "OPEN_TAB" ? (
-                              <Badge variant="warning" className="text-[10px]">
-                                Open Tab
-                              </Badge>
-                            ) : (
-                              <Badge variant="success" className="text-[10px]">
-                                Settled
-                              </Badge>
-                            )}
-                          </TableCell>
-
-                          {/* Staff */}
-                          <TableCell className="text-xs text-slate-600">
-                            {t.staffName}
-                          </TableCell>
-
-                          {/* Amount */}
-                          <TableCell className="text-xs text-right font-black text-slate-900 whitespace-nowrap">
-                            {t.amountETB.toLocaleString()}{" "}
-                            <span className="text-[10px] font-normal text-slate-400">ETB</span>
-                          </TableCell>
-
-                          {/* Admin Action */}
-                          {currentUser?.role === "ADMIN" && (
-                            <TableCell className="text-xs text-right whitespace-nowrap">
-                              {t.status !== "REFUNDED" && t.status !== "CANCELLED" && t.status !== "VOIDED" ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setRefundTarget(t)}
-                                  className="h-6 px-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 border-rose-200 hover:border-rose-300"
-                                >
-                                  Refund
-                                </Button>
+                            {/* Stream */}
+                            <TableCell>
+                              {t.stream === "POS" ? (
+                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  <ShoppingBag className="h-3 w-3" />
+                                  POS Retail
+                                </span>
+                              ) : t.stream === "SUBSCRIPTION" ? (
+                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <CreditCard className="h-3 w-3" />
+                                  Membership
+                                </span>
                               ) : (
-                                <span className="text-[10px] text-slate-400 font-mono italic">
-                                  Reversed
+                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                  <KeyRound className="h-3 w-3" />
+                                  Locker
                                 </span>
                               )}
                             </TableCell>
-                          )}
-                        </TableRow>
-                      ))
+
+                            {/* Reference Number */}
+                            <TableCell className="text-xs font-mono font-medium text-slate-700">
+                              {t.referenceNumber}
+                            </TableCell>
+
+                            {/* Customer */}
+                            <TableCell className="text-xs">
+                              <div className="font-semibold text-slate-900">{t.customerName}</div>
+                              {t.customerCode !== "WALK_IN" && (
+                                <div className="text-[10px] font-mono text-slate-400">
+                                  {t.customerCode}
+                                </div>
+                              )}
+                            </TableCell>
+
+                            {/* Description */}
+                            <TableCell className="text-xs text-slate-600 max-w-xs truncate" title={t.description}>
+                              {t.description}
+                            </TableCell>
+
+                            {/* Payment Channel & Ref */}
+                            <TableCell className="text-xs whitespace-nowrap">
+                              <div className="font-medium text-slate-800">
+                                {t.paymentMethod === "TELEBIRR" ? (
+                                  <span className="text-blue-600 font-semibold">Telebirr</span>
+                                ) : t.paymentMethod === "CBE_TRANSFER" ? (
+                                  <span className="text-purple-600 font-semibold">CBE Birr</span>
+                                ) : (
+                                  <span className="text-emerald-600 font-semibold">Cash</span>
+                                )}
+                              </div>
+                              {t.paymentRef && (
+                                <div className="text-[10px] font-mono text-slate-400" title={`Ref: ${t.paymentRef}`}>
+                                  Ref: {t.paymentRef}
+                                </div>
+                              )}
+                            </TableCell>
+
+                            {/* Status */}
+                            <TableCell className="text-xs">
+                              {t.status === "REFUNDED" ? (
+                                <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                                  Refunded
+                                </Badge>
+                              ) : t.status === "CANCELLED" ? (
+                                <Badge variant="destructive" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                                  Cancelled
+                                </Badge>
+                              ) : t.status === "OPEN_TAB" ? (
+                                <Badge variant="warning" className="text-[10px]">
+                                  Open Tab
+                                </Badge>
+                              ) : (
+                                <Badge variant="success" className="text-[10px]">
+                                  Settled
+                                </Badge>
+                              )}
+                            </TableCell>
+
+                            {/* Staff */}
+                            <TableCell className="text-xs text-slate-600">
+                              {t.staffName}
+                            </TableCell>
+
+                            {/* Amount */}
+                            <TableCell className={`text-xs text-right font-black whitespace-nowrap ${isRefund ? "text-rose-600 font-bold" : "text-slate-900"}`}>
+                              {isRefund ? `-${t.amountETB.toLocaleString()}` : t.amountETB.toLocaleString()}{" "}
+                              <span className="text-[10px] font-normal text-slate-400">ETB</span>
+                            </TableCell>
+
+                            {/* Admin Action */}
+                            {currentUser?.role === "ADMIN" && (
+                              <TableCell className="text-xs text-right whitespace-nowrap">
+                                {!isRefund ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setRefundTarget(t)}
+                                    className="h-6 px-2 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 border-rose-200 hover:border-rose-300"
+                                  >
+                                    Refund
+                                  </Button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-mono italic">
+                                    Reversed
+                                  </span>
+                                )}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -703,7 +748,7 @@ export default function ReportsPage() {
                 <CardHeader className="pb-3 pt-4 px-5">
                   <CardTitle className="text-sm font-semibold">Today's Channel Reconciliation Matrix</CardTitle>
                   <CardDescription className="text-xs">
-                    Audited payment receipts captured across Front Desk & POS shifts
+                    Audited payment receipts & refunds captured across Front Desk & POS shifts
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -712,16 +757,21 @@ export default function ReportsPage() {
                       <TableRow className="bg-slate-50/70">
                         <TableHead>Payment Channel</TableHead>
                         <TableHead>Transactions Count</TableHead>
-                        <TableHead>Subtotal Amount (ETB)</TableHead>
+                        <TableHead>Gross (ETB)</TableHead>
+                        <TableHead>Refunds (ETB)</TableHead>
+                        <TableHead>Net Total (ETB)</TableHead>
                         <TableHead className="text-right">Share of Day</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {shiftData &&
                         Object.entries(shiftData.breakdown).map(([method, info]) => {
+                          const netAmount = info.netETB ?? info.totalETB ?? 0;
+                          const grossAmount = info.grossETB ?? (netAmount + (info.refundsETB || 0));
+                          const refundsAmount = info.refundsETB || 0;
                           const share =
                             shiftData.grandTotalETB > 0
-                              ? ((info.totalETB / shiftData.grandTotalETB) * 100).toFixed(1)
+                              ? ((netAmount / shiftData.grandTotalETB) * 100).toFixed(1)
                               : "0.0";
                           return (
                             <TableRow key={method}>
@@ -732,8 +782,14 @@ export default function ReportsPage() {
                                 {method}
                               </TableCell>
                               <TableCell className="text-xs text-slate-600">{info.count} receipts</TableCell>
+                              <TableCell className="text-xs font-medium text-slate-700">
+                                {Number(grossAmount).toLocaleString()} ETB
+                              </TableCell>
+                              <TableCell className="text-xs font-medium text-rose-600">
+                                {refundsAmount > 0 ? `-${Number(refundsAmount).toLocaleString()} ETB` : "0 ETB"}
+                              </TableCell>
                               <TableCell className="text-xs font-bold text-slate-900">
-                                {Number(info.totalETB).toLocaleString()} ETB
+                                {Number(netAmount).toLocaleString()} ETB
                               </TableCell>
                               <TableCell className="text-xs text-right text-slate-500 font-mono">
                                 {share}%
@@ -772,12 +828,12 @@ export default function ReportsPage() {
                 <CardHeader className="pb-3 pt-4 px-5">
                   <CardTitle className="text-sm font-semibold">Register Shift Cash Count</CardTitle>
                   <CardDescription className="text-xs">
-                    Count physical banknotes in drawer to balance against ledger
+                    Count physical banknotes in drawer to balance against reconciled ledger
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 px-5">
                   <div className="p-3 bg-slate-50 rounded-md border border-slate-200">
-                    <div className="text-xs text-slate-500">Expected System Cash:</div>
+                    <div className="text-xs text-slate-500">Expected Reconciled Cash:</div>
                     <div className="text-xl font-bold text-slate-900">
                       {expectedCash.toLocaleString()} <span className="text-xs font-normal text-slate-500">ETB</span>
                     </div>
@@ -862,3 +918,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+
